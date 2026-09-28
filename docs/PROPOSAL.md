@@ -171,7 +171,7 @@ The repository will be used for version control throughout development, with eac
 The contract source and test file can be found under /contracts and /test folders respectively.
 
 Compile succeeding
-![Compile Succeed](images/HardHatCompile.png)
+![Compile Succeed](images/HardhatCompile.png)
 
 All tests passing
 ![All Tests Passing](images/HardhatTest.png)
