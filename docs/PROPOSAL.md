@@ -161,7 +161,7 @@ The repository will be used for version control throughout development, with eac
 
 | Team Member    | Number of Substantive Commits | Contribution                                                                                                                                                               |
 | -------------- | ----------------------------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Joey Contreras |            2 | Established the Solidity project foundation, implemented and tested the M1 contract scaffold, collected DIDLab/Hardhat evidence, and maintained the AI development record. |
+| Joey Contreras |            3 | Established the Solidity project foundation, implemented and tested the M1 contract scaffold, collected DIDLab/Hardhat evidence, and maintained the AI development record, pushed initial website content|
 | Lupe Campos    |            2 | Developed and maintained the project proposal documentation and contributed to repository and project planning.                                                            |
 
 Commit counts will be based on substantive commits made under each team member's own GitHub account. The final submission will use the repository history to verify these contributions.

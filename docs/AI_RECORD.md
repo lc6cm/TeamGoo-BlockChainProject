@@ -6,8 +6,6 @@
 
 ## What We Asked For
 
-During this week's work, I used ChatGPT to help understand the M1 Project Proposal requirements and organize the project documentation. I asked for:
-
 * An outline of the required sections for `docs/PROPOSAL.md`.
 * Help identifying the stakeholders, assets, transactions, and other information for Activity 3 and Part A2 based on the team's initial problem document.
 * Help understanding what information belongs in the B2 disqualifier analysis.
@@ -16,6 +14,7 @@ During this week's work, I used ChatGPT to help understand the M1 Project Propos
 * Help understanding the purpose of the C2 contract sketch and C3 scope commitment.
 * Ideas for project milestones for Part E that fit the ticket ownership and resale project.
 * Help formatting evidence for the D3 compiled contract and passing tests section.
+* Help setting up and modifying the initial website template with project name, problem, and repository link.
 
 ## What It Produced
 
