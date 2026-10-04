@@ -4,7 +4,7 @@
 
 * ChatGPT
 
-## What You Asked For
+## What We Asked For
 
 During this week's work, I used ChatGPT to help understand the M1 Project Proposal requirements and organize the project documentation. I asked for:
 
