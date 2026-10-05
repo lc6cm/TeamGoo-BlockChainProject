@@ -155,8 +155,6 @@ The project repository is hosted on GitHub and contains the files and directorie
 
 The repository will be used for version control throughout development, with each team member making substantive commits under their own account. The submitted `docs/PROPOSAL.md` will match the proposal submitted for the milestone.
 
-**Graded commit hash:** 2bf16fb
-
 ### D2 — Team Contributions
 
 | Team Member    | Number of Substantive Commits | Contribution                                                                                                                                                               |
