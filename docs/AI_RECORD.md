@@ -30,11 +30,11 @@ ChatGPT produced suggested Markdown content and explanations for several section
 
 ChatGPT also helped explain the `ProjectAnchor.sol` requirements and the purpose of the associated tests.
 
-## How You Verified It
+## How We Verified It
 
-I reviewed the generated proposal content against the M1 assignment requirements and the team's actual ticket resale problem. I also checked the contract and tests in the repository rather than assuming the generated code was correct.
+We reviewed the generated proposal content against the M1 assignment requirements and the team's actual ticket resale problem. I also checked the contract and tests in the repository rather than assuming the generated code was correct.
 
-For the Solidity contract, I verified that `ProjectAnchor.sol`:
+For the Solidity contract, we verified that `ProjectAnchor.sol`:
 
 * Stores a `bytes32` commitment and update timestamp.
 * Sets the deployer as the owner.
