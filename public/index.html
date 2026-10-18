@@ -1,36 +1,547 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Blockchain Ticket Marketplace</title>
+	<title>TeamGoo | Ticket Marketplace</title>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.5/ethers.umd.min.js"></script>
+
+	<style>
+		* {
+			box-sizing: border-box;
+		}
+
+		body {
+			font-family: Arial, sans-serif;
+			max-width: 1000px;
+			margin: 0 auto;
+			padding: 32px 20px;
+			line-height: 1.6;
+			color: #202938;
+			background: #f4f6fa;
+		}
+
+		header {
+			margin-bottom: 28px;
+		}
+
+			header p {
+				color: #5c6678;
+				margin-top: 6px;
+			}
+
+		h1 {
+			margin-bottom: 0;
+		}
+
+		h2 {
+			margin-top: 0;
+			font-size: 1.25rem;
+		}
+
+		section {
+			margin: 24px 0;
+			padding: 24px;
+			background: white;
+			border: 1px solid #e0e5ed;
+			border-radius: 14px;
+			box-shadow: 0 3px 12px rgba(20, 35, 60, 0.04);
+		}
+
+		button {
+			padding: 11px 16px;
+			border: 0;
+			border-radius: 8px;
+			background: #2457d6;
+			color: white;
+			font-size: 0.95rem;
+			font-weight: bold;
+			cursor: pointer;
+		}
+
+			button:hover {
+				background: #1945b5;
+			}
+
+			button:disabled {
+				background: #aab4c5;
+				cursor: not-allowed;
+			}
+
+		.secondary-button {
+			background: #e9eef9;
+			color: #24448b;
+		}
+
+			.secondary-button:hover {
+				background: #dce5f8;
+			}
+
+		.ticket-card {
+			border: 1px solid #dce3ed;
+			border-radius: 12px;
+			padding: 20px;
+			margin-top: 18px;
+		}
+
+		.ticket-top {
+			display: flex;
+			justify-content: space-between;
+			align-items: flex-start;
+			gap: 12px;
+			flex-wrap: wrap;
+		}
+
+			.ticket-top h3 {
+				margin: 0;
+				font-size: 1.2rem;
+			}
+
+		.price {
+			font-size: 1.8rem;
+			font-weight: bold;
+			margin: 12px 0;
+		}
+
+		.badge {
+			display: inline-block;
+			padding: 5px 10px;
+			border-radius: 999px;
+			background: #e2f7e9;
+			color: #176b37;
+			font-size: 0.85rem;
+			font-weight: bold;
+		}
+
+			.badge.inactive {
+				background: #edf0f5;
+				color: #505b6d;
+			}
+
+		.details {
+			border-top: 1px solid #e8ecf2;
+			margin-top: 16px;
+			padding-top: 12px;
+		}
+
+		.detail-row {
+			display: flex;
+			justify-content: space-between;
+			align-items: flex-start;
+			gap: 16px;
+			padding: 7px 0;
+		}
+
+			.detail-row span:first-child {
+				color: #657084;
+			}
+
+			.detail-row span:last-child {
+				text-align: right;
+				overflow-wrap: anywhere;
+			}
+
+		code {
+			overflow-wrap: anywhere;
+		}
+
+		.status {
+			overflow-wrap: anywhere;
+			font-size: 0.92rem;
+		}
+
+		.muted {
+			color: #657084;
+		}
+
+		a {
+			color: #2457d6;
+		}
+
+		@media (max-width: 600px) {
+			body {
+				padding: 20px 12px;
+			}
+
+			section {
+				padding: 18px;
+			}
+
+			.detail-row {
+				flex-direction: column;
+				gap: 2px;
+			}
+
+				.detail-row span:last-child {
+					text-align: left;
+				}
+		}
+	</style>
 </head>
 
 <body>
+	<header>
+		<h1>TeamGoo Ticket Marketplace</h1>
+		<p>
+			A blockchain-based ticket marketplace for transparent ownership,
+			transfers, and redemption records.
+		</p>
+	</header>
 
-	<h1>Blockchain Ticket Marketplace</h1>
+	<section>
+		<h2>Blockchain Connection</h2>
 
-	<h2>Problem</h2>
-	<p>
-		Ticket buyers and sellers can have difficulty verifying whether a
-		ticket is authentic, who owns it, whether it has been transferred,
-		and whether it has already been redeemed. These records are often
-		controlled by centralized ticketing or resale platforms.
-	</p>
+		<p><strong>Network:</strong> DIDLab</p>
+		<p><strong>Chain ID:</strong> 252501</p>
+		<p>
+			<strong>Contract address:</strong><br>
+			<code id="contractAddress"></code>
+		</p>
 
-	<h2>Team</h2>
-	<p>
-		Joey Contreras<br>
-		Lupe Campos
-	</p>
+		<button id="connectWallet">Connect MetaMask</button>
 
-	<h2>Repository</h2>
-	<p>
-		<a href="https://github.com/lc6cm/TeamGoo-BlockChainProject">
-			GitHub Repository
-		</a>
-	</p>
+		<p id="walletStatus" class="status">
+			Wallet not connected. You can still view public ticket data.
+		</p>
 
+		<p id="networkStatus" class="status">
+			Checking wallet network...
+		</p>
+	</section>
+
+	<section>
+		<h2>Ticket Marketplace</h2>
+
+		<p class="muted">
+			Ticket information is retrieved from the deployed smart contract
+			on DIDLab. Refresh to check the latest on-chain state.
+		</p>
+
+		<button id="refreshTicket" class="secondary-button">
+			Refresh Ticket #1
+		</button>
+
+		<p id="ticketStatus" class="status">
+			Loading ticket information...
+		</p>
+
+		<div class="ticket-card">
+			<div class="ticket-top">
+				<div>
+					<h3>Ticket #1</h3>
+					<p class="muted">TeamGoo Ticket (TGT)</p>
+				</div>
+
+				<span id="listingBadge" class="badge inactive">
+					Checking status...
+				</span>
+			</div>
+
+			<p class="muted">Ticket price</p>
+			<div id="ticketPrice" class="price">—</div>
+
+			<div class="details">
+				<div class="detail-row">
+					<span>Listing status</span>
+					<span id="listingStatus">—</span>
+				</div>
+
+				<div class="detail-row">
+					<span>Current holder</span>
+					<span id="ticketOwner">—</span>
+				</div>
+
+				<div class="detail-row">
+					<span>Issuer</span>
+					<span id="ticketIssuer">—</span>
+				</div>
+
+				<div class="detail-row">
+					<span>Secondary seller</span>
+					<span id="secondarySeller">—</span>
+				</div>
+
+				<div class="detail-row">
+					<span>Secondary price</span>
+					<span id="secondaryPrice">—</span>
+				</div>
+
+				<div class="detail-row">
+					<span>Redeemed</span>
+					<span id="ticketRedeemed">—</span>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<section>
+		<h2>About the Project</h2>
+
+		<p>
+			Ticket buyers and sellers can have difficulty verifying whether
+			tickets are authentic, who owns them, whether they have been
+			transferred, and whether they have already been redeemed.
+			This project uses blockchain records to make ticket ownership
+			and marketplace activity independently verifiable.
+		</p>
+
+		<p><strong>Team:</strong> Joey Contreras and Lupe Campos</p>
+
+		<p>
+			<a href="https://github.com/lc6cm/TeamGoo-BlockChainProject"
+			   target="_blank"
+			   rel="noopener noreferrer">
+				View the GitHub repository
+			</a>
+		</p>
+	</section>
+
+	<script>
+		const CONTRACT_ADDRESS =
+		"0x98dEca57f98504fF09AcdBF1F2345ABF72EbA3c6";
+
+		// DIDLab chain ID 252501 in hexadecimal.
+		const DIDLAB_CHAIN_ID = "0x3da55";
+
+		const CONTRACT_ABI = [
+		"function ticketInfo(uint256 tokenId) view returns (address ticketOwner, address issuer, uint256 primaryPrice, bool primaryListed, address secondarySeller, uint256 secondaryPrice, bool redeemed)"
+		];
+
+		const DIDLAB_RPC = "https://eth.didlab.org";
+
+		document.getElementById("contractAddress").textContent =
+		CONTRACT_ADDRESS;
+
+		let browserProvider = null;
+		let signer = null;
+
+		const ZERO_ADDRESS = ethers.ZeroAddress;
+
+		async function checkNetwork() {
+		const networkStatus =
+		document.getElementById("networkStatus");
+
+		if (!window.ethereum) {
+		networkStatus.textContent =
+		"MetaMask not detected. Public ticket information is still available.";
+		return false;
+		}
+
+		try {
+		const chainId = await window.ethereum.request({
+		method: "eth_chainId"
+		});
+
+		if (chainId.toLowerCase() !== DIDLAB_CHAIN_ID) {
+		networkStatus.textContent =
+		"Wrong network. Switch MetaMask to DIDLab (chain ID 252501).";
+		return false;
+		}
+
+		networkStatus.textContent =
+		"MetaMask is on DIDLab (chain ID 252501).";
+
+		return true;
+		} catch (error) {
+		networkStatus.textContent =
+		"Could not check wallet network: " + error.message;
+
+		return false;
+		}
+		}
+
+		async function connectWallet() {
+		const walletStatus =
+		document.getElementById("walletStatus");
+
+		try {
+		if (!window.ethereum) {
+		throw new Error(
+		"MetaMask is not installed or enabled in this browser."
+		);
+		}
+
+		browserProvider =
+		new ethers.BrowserProvider(window.ethereum);
+
+		await browserProvider.send(
+		"eth_requestAccounts",
+		[]
+		);
+
+		const correctNetwork = await checkNetwork();
+
+		if (!correctNetwork) {
+		signer = null;
+
+		walletStatus.textContent =
+		"Wallet detected, but it must be switched to DIDLab.";
+
+		return;
+		}
+
+		signer = await browserProvider.getSigner();
+
+		const address = await signer.getAddress();
+
+		walletStatus.textContent =
+		"Wallet connected: " + address;
+
+		await loadTicket();
+		} catch (error) {
+		walletStatus.textContent =
+		"Wallet connection failed: " + error.message;
+		}
+		}
+
+		async function loadTicket() {
+		const status =
+		document.getElementById("ticketStatus");
+
+		const refreshButton =
+		document.getElementById("refreshTicket");
+
+		refreshButton.disabled = true;
+		status.textContent =
+		"Reading ticket #1 from DIDLab...";
+
+		try {
+		// This provider reads public blockchain data.
+		// It does not require a connected wallet.
+		const provider = new ethers.JsonRpcProvider(
+		DIDLAB_RPC,
+		252501
+		);
+
+		const contract = new ethers.Contract(
+		CONTRACT_ADDRESS,
+		CONTRACT_ABI,
+		provider
+		);
+
+		const ticket = await contract.ticketInfo(1);
+
+		const currentOwner = ticket[0];
+		const issuer = ticket[1];
+		const primaryPrice = ticket[2];
+		const primaryListed = ticket[3];
+		const secondarySeller = ticket[4];
+		const secondaryPrice = ticket[5];
+		const redeemed = ticket[6];
+
+		let listingLabel = "Not listed for sale";
+		let badgeLabel = "Not listed";
+		let isAvailable = false;
+
+		if (redeemed) {
+		listingLabel = "Redeemed";
+		badgeLabel = "Redeemed";
+		} else if (
+		secondarySeller.toLowerCase() !==
+		ZERO_ADDRESS.toLowerCase()
+		) {
+		listingLabel = "Available for resale";
+		badgeLabel = "For resale";
+		isAvailable = true;
+		} else if (primaryListed) {
+		listingLabel = "Available for primary sale";
+		badgeLabel = "For sale";
+		isAvailable = true;
+		}
+
+		let holderLabel = currentOwner;
+
+		if (
+		currentOwner.toLowerCase() ===
+		CONTRACT_ADDRESS.toLowerCase()
+		) {
+		holderLabel = "Marketplace escrow";
+		}
+
+		document.getElementById("listingStatus").textContent =
+		listingLabel;
+
+		document.getElementById("listingBadge").textContent =
+		badgeLabel;
+
+		document.getElementById("listingBadge").className =
+		isAvailable ? "badge" : "badge inactive";
+
+		document.getElementById("ticketPrice").textContent =
+		secondarySeller.toLowerCase() !==
+		ZERO_ADDRESS.toLowerCase()
+		? ethers.formatEther(secondaryPrice) +
+		" DIDLab tokens (resale)"
+		: ethers.formatEther(primaryPrice) +
+		" DIDLab tokens";
+
+		document.getElementById("ticketOwner").textContent =
+		holderLabel;
+
+		document.getElementById("ticketIssuer").textContent =
+		issuer;
+
+		document.getElementById("secondarySeller").textContent =
+		secondarySeller.toLowerCase() ===
+		ZERO_ADDRESS.toLowerCase()
+		? "None"
+		: secondarySeller;
+
+		document.getElementById("secondaryPrice").textContent =
+		secondarySeller.toLowerCase() ===
+		ZERO_ADDRESS.toLowerCase()
+		? "Not listed"
+		: ethers.formatEther(secondaryPrice) +
+		" DIDLab tokens";
+
+		document.getElementById("ticketRedeemed").textContent =
+		redeemed ? "Yes" : "No";
+
+		status.textContent =
+		"Success: ticket information read from DIDLab (chain 252501).";
+		} catch (error) {
+		status.textContent =
+		"Could not read ticket data: " + error.message;
+		} finally {
+		refreshButton.disabled = false;
+		}
+		}
+
+		document.getElementById("connectWallet").addEventListener(
+		"click",
+		connectWallet
+		);
+
+		document.getElementById("refreshTicket").addEventListener(
+		"click",
+		loadTicket
+		);
+
+		if (window.ethereum) {
+		window.ethereum.on("chainChanged", async () => {
+		signer = null;
+		browserProvider = null;
+		document.getElementById("walletStatus").textContent =
+		"Network changed. Reconnect your wallet if needed.";
+		await checkNetwork();
+		});
+
+		window.ethereum.on("accountsChanged", async (accounts) => {
+		signer = null;
+
+		if (accounts.length === 0) {
+		document.getElementById("walletStatus").textContent =
+		"Wallet disconnected.";
+		} else {
+		document.getElementById("walletStatus").textContent =
+		"Wallet account changed. Reconnect to continue.";
+		}
+		});
+		}
+
+		checkNetwork();
+		loadTicket();
+	</script>
 </body>
 </html>
-```
