@@ -6,7 +6,6 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>TeamGoo | Ticket Marketplace</title>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.5/ethers.umd.min.js"></script>
-
 	<style>
 		* {
 			box-sizing: border-box;
@@ -26,9 +25,8 @@
 			margin-bottom: 28px;
 		}
 
-			header p {
-				color: #5c6678;
-				margin-top: 6px;
+			header p, .muted {
+				color: #657084;
 			}
 
 		h1 {
@@ -46,16 +44,17 @@
 			background: white;
 			border: 1px solid #e0e5ed;
 			border-radius: 14px;
-			box-shadow: 0 3px 12px rgba(20, 35, 60, 0.04);
+			box-shadow: 0 3px 12px rgba(20,35,60,.04);
 		}
 
 		button {
 			padding: 11px 16px;
+			margin: 4px 5px 4px 0;
 			border: 0;
 			border-radius: 8px;
 			background: #2457d6;
 			color: white;
-			font-size: 0.95rem;
+			font-size: .95rem;
 			font-weight: bold;
 			cursor: pointer;
 		}
@@ -110,7 +109,7 @@
 			border-radius: 999px;
 			background: #e2f7e9;
 			color: #176b37;
-			font-size: 0.85rem;
+			font-size: .85rem;
 			font-weight: bold;
 		}
 
@@ -128,7 +127,6 @@
 		.detail-row {
 			display: flex;
 			justify-content: space-between;
-			align-items: flex-start;
 			gap: 16px;
 			padding: 7px 0;
 		}
@@ -142,21 +140,41 @@
 				overflow-wrap: anywhere;
 			}
 
+		.status {
+			overflow-wrap: anywhere;
+			font-size: .92rem;
+		}
+
+		.action-panel {
+			margin-top: 20px;
+			padding-top: 16px;
+			border-top: 1px solid #e8ecf2;
+		}
+
+		input {
+			width: 190px;
+			max-width: 100%;
+			padding: 10px;
+			border: 1px solid #cbd4e2;
+			border-radius: 8px;
+			font-size: 1rem;
+		}
+
+		.small-note {
+			font-size: .88rem;
+			color: #657084;
+		}
+
 		code {
 			overflow-wrap: anywhere;
 		}
 
-		.status {
-			overflow-wrap: anywhere;
-			font-size: 0.92rem;
-		}
-
-		.muted {
-			color: #657084;
-		}
-
 		a {
 			color: #2457d6;
+		}
+
+		[hidden] {
+			display: none !important;
 		}
 
 		@media (max-width: 600px) {
@@ -179,52 +197,27 @@
 		}
 	</style>
 </head>
-
 <body>
 	<header>
 		<h1>TeamGoo Ticket Marketplace</h1>
-		<p>
-			A blockchain-based ticket marketplace for transparent ownership,
-			transfers, and redemption records.
-		</p>
+		<p>A blockchain-based ticket marketplace for transparent ownership, transfers, and redemption records.</p>
 	</header>
 
 	<section>
 		<h2>Blockchain Connection</h2>
-
 		<p><strong>Network:</strong> DIDLab</p>
 		<p><strong>Chain ID:</strong> 252501</p>
-		<p>
-			<strong>Contract address:</strong><br>
-			<code id="contractAddress"></code>
-		</p>
-
+		<p><strong>Contract address:</strong><br><code id="contractAddress"></code></p>
 		<button id="connectWallet">Connect MetaMask</button>
-
-		<p id="walletStatus" class="status">
-			Wallet not connected. You can still view public ticket data.
-		</p>
-
-		<p id="networkStatus" class="status">
-			Checking wallet network...
-		</p>
+		<p id="walletStatus" class="status">Wallet not connected. Public ticket information is still available.</p>
+		<p id="networkStatus" class="status">Checking wallet network...</p>
 	</section>
 
 	<section>
 		<h2>Ticket Marketplace</h2>
-
-		<p class="muted">
-			Ticket information is retrieved from the deployed smart contract
-			on DIDLab. Refresh to check the latest on-chain state.
-		</p>
-
-		<button id="refreshTicket" class="secondary-button">
-			Refresh Ticket #1
-		</button>
-
-		<p id="ticketStatus" class="status">
-			Loading ticket information...
-		</p>
+		<p class="muted">Ticket information is retrieved from the deployed smart contract on DIDLab.</p>
+		<button id="refreshTicket" class="secondary-button">Refresh Ticket #1</button>
+		<p id="ticketStatus" class="status">Loading ticket information...</p>
 
 		<div class="ticket-card">
 			<div class="ticket-top">
@@ -232,314 +225,476 @@
 					<h3>Ticket #1</h3>
 					<p class="muted">TeamGoo Ticket (TGT)</p>
 				</div>
-
-				<span id="listingBadge" class="badge inactive">
-					Checking status...
-				</span>
+				<span id="listingBadge" class="badge inactive">Checking status...</span>
 			</div>
 
 			<p class="muted">Ticket price</p>
 			<div id="ticketPrice" class="price">—</div>
 
 			<div class="details">
-				<div class="detail-row">
-					<span>Listing status</span>
-					<span id="listingStatus">—</span>
+				<div class="detail-row"><span>Listing status</span><span id="listingStatus">—</span></div>
+				<div class="detail-row"><span>Current holder</span><span id="ticketOwner">—</span></div>
+				<div class="detail-row"><span>Issuer</span><span id="ticketIssuer">—</span></div>
+				<div class="detail-row"><span>Secondary seller</span><span id="secondarySeller">—</span></div>
+				<div class="detail-row"><span>Secondary price</span><span id="secondaryPrice">—</span></div>
+				<div class="detail-row"><span>Redeemed</span><span id="ticketRedeemed">—</span></div>
+			</div>
+
+			<div class="action-panel">
+				<h3>Ticket Actions</h3>
+				<p class="small-note">Transactions change the state of the deployed smart contract. Check the amount and network in MetaMask before confirming.</p>
+
+				<button id="buyPrimaryButton" hidden>Buy Ticket #1</button>
+				<button id="buySecondaryButton" hidden>Buy Resale Ticket</button>
+
+				<div id="resaleControls" hidden>
+					<p><label for="resalePrice"><strong>Resale price (DIDLab tokens)</strong></label></p>
+					<input id="resalePrice" type="number" min="0" step="any" placeholder="e.g. 0.02">
+					<button id="listResaleButton">List for Resale</button>
 				</div>
 
-				<div class="detail-row">
-					<span>Current holder</span>
-					<span id="ticketOwner">—</span>
-				</div>
-
-				<div class="detail-row">
-					<span>Issuer</span>
-					<span id="ticketIssuer">—</span>
-				</div>
-
-				<div class="detail-row">
-					<span>Secondary seller</span>
-					<span id="secondarySeller">—</span>
-				</div>
-
-				<div class="detail-row">
-					<span>Secondary price</span>
-					<span id="secondaryPrice">—</span>
-				</div>
-
-				<div class="detail-row">
-					<span>Redeemed</span>
-					<span id="ticketRedeemed">—</span>
-				</div>
+				<button id="cancelListingButton" class="secondary-button" hidden>Cancel Resale Listing</button>
+				<p id="actionStatus" class="status">Connect MetaMask to use ticket actions.</p>
 			</div>
 		</div>
 	</section>
 
 	<section>
 		<h2>About the Project</h2>
-
-		<p>
-			Ticket buyers and sellers can have difficulty verifying whether
-			tickets are authentic, who owns them, whether they have been
-			transferred, and whether they have already been redeemed.
-			This project uses blockchain records to make ticket ownership
-			and marketplace activity independently verifiable.
-		</p>
-
+		<p>Ticket buyers and sellers can have difficulty verifying whether tickets are authentic, who owns them, whether they have been transferred, and whether they have already been redeemed. This project uses blockchain records to make ticket ownership and marketplace activity independently verifiable.</p>
 		<p><strong>Team:</strong> Joey Contreras and Lupe Campos</p>
-
-		<p>
-			<a href="https://github.com/lc6cm/TeamGoo-BlockChainProject"
-			   target="_blank"
-			   rel="noopener noreferrer">
-				View the GitHub repository
-			</a>
-		</p>
+		<p><a href="https://github.com/lc6cm/TeamGoo-BlockChainProject" target="_blank" rel="noopener noreferrer">View the GitHub repository</a></p>
 	</section>
 
 	<script>
-		const CONTRACT_ADDRESS =
-		"0x98dEca57f98504fF09AcdBF1F2345ABF72EbA3c6";
+		"use strict";
 
-		// DIDLab chain ID 252501 in hexadecimal.
+		const CONTRACT_ADDRESS = "0x98dEca57f98504fF09AcdBF1F2345ABF72EbA3c6";
 		const DIDLAB_CHAIN_ID = "0x3da55";
+		const DIDLAB_RPC = "https://eth.didlab.org";
+		const TOKEN_ID = 1;
+		const ZERO_ADDRESS = ethers.ZeroAddress;
 
 		const CONTRACT_ABI = [
-		"function ticketInfo(uint256 tokenId) view returns (address ticketOwner, address issuer, uint256 primaryPrice, bool primaryListed, address secondarySeller, uint256 secondaryPrice, bool redeemed)"
+		"function ticketInfo(uint256 tokenId) view returns (address ticketOwner, address issuer, uint256 primaryPrice, bool primaryListed, address secondarySeller, uint256 secondaryPrice, bool redeemed)",
+		"function buyPrimaryTicket(uint256 tokenId) payable",
+		"function listTicket(uint256 tokenId, uint256 price)",
+		"function cancelListing(uint256 tokenId)",
+		"function buySecondaryTicket(uint256 tokenId) payable"
 		];
 
-		const DIDLAB_RPC = "https://eth.didlab.org";
-
-		document.getElementById("contractAddress").textContent =
-		CONTRACT_ADDRESS;
+		document.getElementById("contractAddress").textContent = CONTRACT_ADDRESS;
 
 		let browserProvider = null;
 		let signer = null;
+		let ticketState = null;
+		let busy = false;
+		let readProvider = null;
 
-		const ZERO_ADDRESS = ethers.ZeroAddress;
+		const el = id => document.getElementById(id);
+
+		function setActionStatus(message) {
+		el("actionStatus").textContent = message;
+		}
+
+		function errorMessage(error) {
+		return error?.shortMessage || error?.reason || error?.message || String(error);
+		}
+
+		function isZero(address) {
+		return address.toLowerCase() === ZERO_ADDRESS.toLowerCase();
+		}
+
+		function clearWallet(message) {
+		signer = null;
+		browserProvider = null;
+		el("walletStatus").textContent = message;
+		updateActions();
+		}
 
 		async function checkNetwork() {
-		const networkStatus =
-		document.getElementById("networkStatus");
-
 		if (!window.ethereum) {
-		networkStatus.textContent =
-		"MetaMask not detected. Public ticket information is still available.";
+		el("networkStatus").textContent =
+		"MetaMask not detected. Public ticket information remains available.";
 		return false;
 		}
 
 		try {
-		const chainId = await window.ethereum.request({
-		method: "eth_chainId"
-		});
+		const chainId = await window.ethereum.request({ method: "eth_chainId" });
+		const correct = chainId.toLowerCase() === DIDLAB_CHAIN_ID;
 
-		if (chainId.toLowerCase() !== DIDLAB_CHAIN_ID) {
-		networkStatus.textContent =
-		"Wrong network. Switch MetaMask to DIDLab (chain ID 252501).";
-		return false;
-		}
+		el("networkStatus").textContent = correct
+		? "MetaMask is on DIDLab (chain ID 252501)."
+		: "Wrong network. Switch MetaMask to DIDLab (chain ID 252501).";
 
-		networkStatus.textContent =
-		"MetaMask is on DIDLab (chain ID 252501).";
-
-		return true;
+		return correct;
 		} catch (error) {
-		networkStatus.textContent =
-		"Could not check wallet network: " + error.message;
-
+		el("networkStatus").textContent =
+		"Could not check network: " + errorMessage(error);
 		return false;
 		}
 		}
 
 		async function connectWallet() {
-		const walletStatus =
-		document.getElementById("walletStatus");
-
-		try {
 		if (!window.ethereum) {
-		throw new Error(
-		"MetaMask is not installed or enabled in this browser."
-		);
-		}
-
-		browserProvider =
-		new ethers.BrowserProvider(window.ethereum);
-
-		await browserProvider.send(
-		"eth_requestAccounts",
-		[]
-		);
-
-		const correctNetwork = await checkNetwork();
-
-		if (!correctNetwork) {
-		signer = null;
-
-		walletStatus.textContent =
-		"Wallet detected, but it must be switched to DIDLab.";
-
+		clearWallet("MetaMask was not detected. Open this page in a browser with MetaMask installed.");
+		await checkNetwork();
 		return;
 		}
 
+		el("connectWallet").disabled = true;
+		el("walletStatus").textContent = "Connecting to MetaMask...";
+
+		try {
+		// Initialize the provider before requesting a signer.
+		browserProvider = new ethers.BrowserProvider(window.ethereum);
+
+		const accounts = await window.ethereum.request({
+		method: "eth_requestAccounts"
+		});
+
+		if (!accounts || accounts.length === 0) {
+		throw new Error("No wallet account was selected.");
+		}
+
+		if (!(await checkNetwork())) {
+		signer = null;
+		el("walletStatus").textContent =
+		"Wallet detected, but the network is incorrect. Switch to DIDLab and reconnect.";
+		updateActions();
+		return;
+		}
+
+		// Recreate the provider after the wallet/network checks.
+		browserProvider = new ethers.BrowserProvider(window.ethereum);
 		signer = await browserProvider.getSigner();
 
 		const address = await signer.getAddress();
-
-		walletStatus.textContent =
-		"Wallet connected: " + address;
+		el("walletStatus").textContent = "Wallet connected: " + address;
+		setActionStatus("Wallet connected. Checking available ticket actions...");
 
 		await loadTicket();
 		} catch (error) {
-		walletStatus.textContent =
-		"Wallet connection failed: " + error.message;
+		clearWallet("Wallet connection failed: " + errorMessage(error));
+		setActionStatus("Could not connect wallet. Check MetaMask and try again.");
+		console.error("Wallet connection error:", error);
+		} finally {
+		el("connectWallet").disabled = false;
+		updateActions();
 		}
 		}
 
 		async function loadTicket() {
-		const status =
-		document.getElementById("ticketStatus");
-
-		const refreshButton =
-		document.getElementById("refreshTicket");
-
-		refreshButton.disabled = true;
-		status.textContent =
-		"Reading ticket #1 from DIDLab...";
+		el("refreshTicket").disabled = true;
+		el("ticketStatus").textContent = "Reading ticket #1 from DIDLab...";
 
 		try {
-		// This provider reads public blockchain data.
-		// It does not require a connected wallet.
-		const provider = new ethers.JsonRpcProvider(
-		DIDLAB_RPC,
-		252501
-		);
+		// Public reads use the DIDLab RPC and do not require a wallet.
+		if (!readProvider) {
+		readProvider = new ethers.JsonRpcProvider(DIDLAB_RPC, 252501);
+		}
 
 		const contract = new ethers.Contract(
 		CONTRACT_ADDRESS,
 		CONTRACT_ABI,
-		provider
+		readProvider
 		);
 
-		const ticket = await contract.ticketInfo(1);
+		const result = await contract.ticketInfo(TOKEN_ID);
 
-		const currentOwner = ticket[0];
-		const issuer = ticket[1];
-		const primaryPrice = ticket[2];
-		const primaryListed = ticket[3];
-		const secondarySeller = ticket[4];
-		const secondaryPrice = ticket[5];
-		const redeemed = ticket[6];
+		ticketState = {
+		owner: result[0],
+		issuer: result[1],
+		primaryPrice: result[2],
+		primaryListed: result[3],
+		secondarySeller: result[4],
+		secondaryPrice: result[5],
+		redeemed: result[6]
+		};
 
-		let listingLabel = "Not listed for sale";
-		let badgeLabel = "Not listed";
-		let isAvailable = false;
+		const t = ticketState;
+		const secondaryListed = !isZero(t.secondarySeller);
+		let label = "Not listed for sale";
+		let badge = "Not listed";
+		let available = false;
 
-		if (redeemed) {
-		listingLabel = "Redeemed";
-		badgeLabel = "Redeemed";
-		} else if (
-		secondarySeller.toLowerCase() !==
-		ZERO_ADDRESS.toLowerCase()
-		) {
-		listingLabel = "Available for resale";
-		badgeLabel = "For resale";
-		isAvailable = true;
-		} else if (primaryListed) {
-		listingLabel = "Available for primary sale";
-		badgeLabel = "For sale";
-		isAvailable = true;
+		if (t.redeemed) {
+		label = "Redeemed";
+		badge = "Redeemed";
+		} else if (secondaryListed) {
+		label = "Available for resale";
+		badge = "For resale";
+		available = true;
+		} else if (t.primaryListed) {
+		label = "Available for primary sale";
+		badge = "For sale";
+		available = true;
 		}
 
-		let holderLabel = currentOwner;
+		el("listingStatus").textContent = label;
+		el("listingBadge").textContent = badge;
+		el("listingBadge").className = available ? "badge" : "badge inactive";
 
-		if (
-		currentOwner.toLowerCase() ===
-		CONTRACT_ADDRESS.toLowerCase()
-		) {
-		holderLabel = "Marketplace escrow";
-		}
+		el("ticketPrice").textContent =
+		ethers.formatEther(secondaryListed ? t.secondaryPrice : t.primaryPrice) +
+		" DIDLab tokens" + (secondaryListed ? " (resale)" : "");
 
-		document.getElementById("listingStatus").textContent =
-		listingLabel;
+		el("ticketOwner").textContent =
+		t.owner.toLowerCase() === CONTRACT_ADDRESS.toLowerCase()
+		? "Marketplace escrow"
+		: t.owner;
 
-		document.getElementById("listingBadge").textContent =
-		badgeLabel;
+		el("ticketIssuer").textContent = t.issuer;
+		el("secondarySeller").textContent =
+		secondaryListed ? t.secondarySeller : "None";
+		el("secondaryPrice").textContent =
+		secondaryListed
+		? ethers.formatEther(t.secondaryPrice) + " DIDLab tokens"
+		: "Not listed";
+		el("ticketRedeemed").textContent = t.redeemed ? "Yes" : "No";
 
-		document.getElementById("listingBadge").className =
-		isAvailable ? "badge" : "badge inactive";
-
-		document.getElementById("ticketPrice").textContent =
-		secondarySeller.toLowerCase() !==
-		ZERO_ADDRESS.toLowerCase()
-		? ethers.formatEther(secondaryPrice) +
-		" DIDLab tokens (resale)"
-		: ethers.formatEther(primaryPrice) +
-		" DIDLab tokens";
-
-		document.getElementById("ticketOwner").textContent =
-		holderLabel;
-
-		document.getElementById("ticketIssuer").textContent =
-		issuer;
-
-		document.getElementById("secondarySeller").textContent =
-		secondarySeller.toLowerCase() ===
-		ZERO_ADDRESS.toLowerCase()
-		? "None"
-		: secondarySeller;
-
-		document.getElementById("secondaryPrice").textContent =
-		secondarySeller.toLowerCase() ===
-		ZERO_ADDRESS.toLowerCase()
-		? "Not listed"
-		: ethers.formatEther(secondaryPrice) +
-		" DIDLab tokens";
-
-		document.getElementById("ticketRedeemed").textContent =
-		redeemed ? "Yes" : "No";
-
-		status.textContent =
+		el("ticketStatus").textContent =
 		"Success: ticket information read from DIDLab (chain 252501).";
 		} catch (error) {
-		status.textContent =
-		"Could not read ticket data: " + error.message;
+		ticketState = null;
+		el("ticketStatus").textContent =
+		"Could not read ticket data: " + errorMessage(error);
+		console.error("Ticket read error:", error);
 		} finally {
-		refreshButton.disabled = false;
+		el("refreshTicket").disabled = false;
+		updateActions();
 		}
 		}
 
-		document.getElementById("connectWallet").addEventListener(
-		"click",
-		connectWallet
-		);
+		async function getWritableContract() {
+		if (!window.ethereum) {
+		throw new Error("MetaMask was not detected.");
+		}
 
-		document.getElementById("refreshTicket").addEventListener(
-		"click",
-		loadTicket
-		);
+		// Rebuild the provider if missing; don't call getSigner on null.
+		if (!browserProvider) {
+		browserProvider = new ethers.BrowserProvider(window.ethereum);
+		}
 
-		if (window.ethereum) {
-		window.ethereum.on("chainChanged", async () => {
-		signer = null;
-		browserProvider = null;
-		document.getElementById("walletStatus").textContent =
-		"Network changed. Reconnect your wallet if needed.";
-		await checkNetwork();
+		if (!(await checkNetwork())) {
+		throw new Error("Switch MetaMask to DIDLab (chain ID 252501) first.");
+		}
+
+		// Request accounts only when the user initiates a transaction.
+		const accounts = await window.ethereum.request({
+		method: "eth_requestAccounts"
 		});
 
-		window.ethereum.on("accountsChanged", async (accounts) => {
-		signer = null;
+		if (!accounts || accounts.length === 0) {
+		throw new Error("Connect a MetaMask account first.");
+		}
 
-		if (accounts.length === 0) {
-		document.getElementById("walletStatus").textContent =
-		"Wallet disconnected.";
+		browserProvider = new ethers.BrowserProvider(window.ethereum);
+		signer = await browserProvider.getSigner();
+
+		const network = await browserProvider.getNetwork();
+		if (network.chainId !== 252501n) {
+		throw new Error("Wrong network. Switch MetaMask to DIDLab.");
+		}
+
+		el("walletStatus").textContent =
+		"Wallet connected: " + await signer.getAddress();
+
+		return new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+		}
+
+		async function updateActions() {
+		const t = ticketState;
+		let address = "";
+
+		if (signer) {
+		try {
+		address = (await signer.getAddress()).toLowerCase();
+		} catch (_) {
+		address = "";
+		}
+		}
+
+		const connected = Boolean(address);
+		const secondaryListed = Boolean(t && !isZero(t.secondarySeller));
+		const inEscrow = Boolean(
+		t && t.owner.toLowerCase() === CONTRACT_ADDRESS.toLowerCase()
+		);
+		const isOwner = Boolean(
+		t && address && t.owner.toLowerCase() === address
+		);
+		const isSeller = Boolean(
+		t && address && secondaryListed &&
+		t.secondarySeller.toLowerCase() === address
+		);
+
+		const canBuyPrimary = Boolean(
+		t && connected && !t.redeemed &&
+		t.primaryListed && inEscrow && !secondaryListed
+		);
+		const canBuySecondary = Boolean(
+		t && connected && !t.redeemed &&
+		secondaryListed && t.secondarySeller.toLowerCase() !== address
+		);
+		const canList = Boolean(
+		t && connected && !t.redeemed && isOwner &&
+		!secondaryListed && !inEscrow && !t.primaryListed
+		);
+		const canCancel = Boolean(
+		t && connected && !t.redeemed && isSeller
+		);
+
+		el("buyPrimaryButton").hidden = !canBuyPrimary;
+		el("buySecondaryButton").hidden = !canBuySecondary;
+		el("resaleControls").hidden = !canList;
+		el("cancelListingButton").hidden = !canCancel;
+
+		if (!connected) {
+		setActionStatus("Connect MetaMask on DIDLab to use ticket actions.");
+		} else if (!t) {
+		setActionStatus("Ticket data is unavailable. Refresh and try again.");
+		} else if (t.redeemed) {
+		setActionStatus("This ticket has been redeemed; purchase and resale actions are disabled.");
+		} else if (canBuyPrimary) {
+		setActionStatus("This wallet can purchase the primary listing.");
+		} else if (canBuySecondary) {
+		setActionStatus("This wallet can purchase the resale listing.");
+		} else if (canCancel) {
+		setActionStatus("You are the listed seller and can cancel the resale listing.");
+		} else if (canList) {
+		setActionStatus("This wallet owns the ticket and can list it for resale.");
+		} else if (inEscrow && t.primaryListed) {
+		setActionStatus("Ticket is available for primary sale. This wallet can purchase it.");
 		} else {
-		document.getElementById("walletStatus").textContent =
-		"Wallet account changed. Reconnect to continue.";
+		setActionStatus("No action is available for this wallet and ticket state.");
 		}
+		}
+
+		async function runTransaction(label, action) {
+		if (busy) return;
+		busy = true;
+
+		[
+		"buyPrimaryButton",
+		"buySecondaryButton",
+		"listResaleButton",
+		"cancelListingButton",
+		"refreshTicket"
+		].forEach(id => { el(id).disabled = true; });
+
+		try {
+		const contract = await getWritableContract();
+		setActionStatus(label + ": confirm the transaction in MetaMask.");
+
+		const tx = await action(contract);
+		setActionStatus(
+		label + " submitted. Transaction hash: " + tx.hash +
+		". Waiting for confirmation..."
+		);
+
+		const receipt = await tx.wait();
+		if (!receipt || receipt.status !== 1) {
+		throw new Error("Transaction did not succeed.");
+		}
+
+		await loadTicket();
+		setActionStatus(label + " confirmed! Transaction hash: " + tx.hash);
+		} catch (error) {
+		setActionStatus(label + " failed: " + errorMessage(error));
+		console.error(label + " error:", error);
+		} finally {
+		busy = false;
+		[
+		"buyPrimaryButton",
+		"buySecondaryButton",
+		"listResaleButton",
+		"cancelListingButton",
+		"refreshTicket"
+		].forEach(id => { el(id).disabled = false; });
+		updateActions();
+		}
+		}
+
+		el("buyPrimaryButton").addEventListener("click", () => {
+		if (!ticketState) return;
+		const price = ticketState.primaryPrice;
+
+		if (!confirm(
+		"Buy Ticket #1 for " + ethers.formatEther(price) +
+		" DIDLab tokens? Review the transaction in MetaMask before confirming."
+		)) return;
+
+		runTransaction("Primary purchase", contract =>
+		contract.buyPrimaryTicket(TOKEN_ID, { value: price })
+		);
+		});
+
+		el("buySecondaryButton").addEventListener("click", () => {
+		if (!ticketState) return;
+		const price = ticketState.secondaryPrice;
+
+		if (!confirm(
+		"Buy this resale ticket for " + ethers.formatEther(price) +
+		" DIDLab tokens? Review the transaction in MetaMask before confirming."
+		)) return;
+
+		runTransaction("Resale purchase", contract =>
+		contract.buySecondaryTicket(TOKEN_ID, { value: price })
+		);
+		});
+
+		el("listResaleButton").addEventListener("click", () => {
+		const value = el("resalePrice").value.trim();
+
+		try {
+		if (!value || !Number.isFinite(Number(value)) || Number(value) <= 0) {
+		throw new Error("Enter a resale price greater than zero.");
+		}
+
+		const price = ethers.parseEther(value);
+		if (price <= 0n) throw new Error("Enter a resale price greater than zero.");
+
+		if (!confirm(
+		"List Ticket #1 for " + value +
+		" DIDLab tokens? The ticket will move into marketplace escrow."
+		)) return;
+
+		runTransaction("Resale listing", contract =>
+		contract.listTicket(TOKEN_ID, price)
+		);
+		} catch (error) {
+		setActionStatus("Invalid resale price: " + errorMessage(error));
+		}
+		});
+
+		el("cancelListingButton").addEventListener("click", () => {
+		if (!confirm("Cancel your resale listing for Ticket #1?")) return;
+		runTransaction("Cancel listing", contract =>
+		contract.cancelListing(TOKEN_ID)
+		);
+		});
+
+		el("connectWallet").addEventListener("click", connectWallet);
+		el("refreshTicket").addEventListener("click", loadTicket);
+
+		if (window.ethereum && typeof window.ethereum.on === "function") {
+		window.ethereum.on("chainChanged", async () => {
+		clearWallet("Network changed. Click Connect MetaMask to reconnect.");
+		await checkNetwork();
+		await loadTicket();
+		});
+
+		window.ethereum.on("accountsChanged", async accounts => {
+		clearWallet(
+		accounts && accounts.length
+		? "Wallet account changed. Click Connect MetaMask to reconnect."
+		: "Wallet disconnected."
+		);
+		await loadTicket();
 		});
 		}
 
+		// Initial public read; the page does not require a connected wallet.
 		checkNetwork();
 		loadTicket();
 	</script>
