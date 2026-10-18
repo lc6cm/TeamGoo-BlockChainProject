@@ -27,6 +27,7 @@ ChatGPT produced suggested Markdown content and explanations for several section
 * An explanation of the contract sketch and scope commitment.
 * Suggested milestones for M2 through M5.
 * Suggested wording and structure for D3 evidence showing compilation, passing tests, and the DIDLab chain ID.
+* Helped in creating Ticket Marketplace contracts, front end, and tests
 
 ChatGPT also helped explain the `ProjectAnchor.sol` requirements and the purpose of the associated tests.
 
@@ -42,6 +43,7 @@ For the Solidity contract, we verified that `ProjectAnchor.sol`:
 * Rejects an empty commitment using a custom error.
 * Emits the required `CommitmentAnchored` event with indexed parameters.
 * Provides a read function returning the commitment and timestamp.
+* Visited the website on the provided domain, tested transactions and frontned
 
 ## What It Got Wrong
 
