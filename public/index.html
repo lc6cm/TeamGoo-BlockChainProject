@@ -255,6 +255,10 @@
 
 				<button id="cancelListingButton" class="secondary-button" hidden>Cancel Resale Listing</button>
 				<p id="actionStatus" class="status">Connect MetaMask to use ticket actions.</p>
+                <h3>Transaction Evidence</h3>
+                <pre id="transactionEvidence" class="status"
+                     style="white-space:pre-wrap;overflow-wrap:anywhere">No transaction submitted yet.</pre>
+
 			</div>
 		</div>
 	</section>
@@ -570,52 +574,149 @@
 		}
 		}
 
-		async function runTransaction(label, action) {
-		if (busy) return;
-		busy = true;
+		
+function showTransactionEvidence(lines) {
+    el("transactionEvidence").textContent = lines.join("\n");
+}
 
-		[
-		"buyPrimaryButton",
-		"buySecondaryButton",
-		"listResaleButton",
-		"cancelListingButton",
-		"refreshTicket"
-		].forEach(id => { el(id).disabled = true; });
+function transactionRejected(error) {
+    return error?.code === "ACTION_REJECTED" ||
+           error?.code === 4001 ||
+           error?.info?.error?.code === 4001;
+}
 
-		try {
-		const contract = await getWritableContract();
-		setActionStatus(label + ": confirm the transaction in MetaMask.");
+async function runTransaction(label, action) {
+    if (busy) return;
+    busy = true;
 
-		const tx = await action(contract);
-		setActionStatus(
-		label + " submitted. Transaction hash: " + tx.hash +
-		". Waiting for confirmation..."
-		);
+    const buttonIds = [
+        "buyPrimaryButton",
+        "buySecondaryButton",
+        "listResaleButton",
+        "cancelListingButton",
+        "refreshTicket"
+    ];
 
-		const receipt = await tx.wait();
-		if (!receipt || receipt.status !== 1) {
-		throw new Error("Transaction did not succeed.");
-		}
+    buttonIds.forEach(id => {
+        el(id).disabled = true;
+    });
 
-		await loadTicket();
-		setActionStatus(label + " confirmed! Transaction hash: " + tx.hash);
-		} catch (error) {
-		setActionStatus(label + " failed: " + errorMessage(error));
-		console.error(label + " error:", error);
-		} finally {
-		busy = false;
-		[
-		"buyPrimaryButton",
-		"buySecondaryButton",
-		"listResaleButton",
-		"cancelListingButton",
-		"refreshTicket"
-		].forEach(id => { el(id).disabled = false; });
-		updateActions();
-		}
-		}
+    let tx = null;
 
-		el("buyPrimaryButton").addEventListener("click", () => {
+    try {
+        const contract = await getWritableContract();
+
+        showTransactionEvidence([
+            "Outcome: AWAITING WALLET APPROVAL",
+            "Action: " + label,
+            "No transaction hash yet."
+        ]);
+
+        setActionStatus(label + ": confirm in MetaMask.");
+
+        tx = await action(contract);
+
+        showTransactionEvidence([
+            "Outcome: PENDING",
+            "Action: " + label,
+            "Transaction hash: " + tx.hash,
+            "Waiting for blockchain confirmation..."
+        ]);
+
+        const receipt = await tx.wait();
+
+        if (!receipt) {
+            throw new Error("Transaction receipt unavailable.");
+        }
+
+        showTransactionEvidence([
+            "Outcome: " +
+                (receipt.status === 1 ? "CONFIRMED" : "REVERTED ON-CHAIN"),
+            "Action: " + label,
+            "Transaction hash: " + tx.hash,
+            "Block number: " + receipt.blockNumber,
+            "Gas used: " + receipt.gasUsed.toString(),
+            "Receipt status: " + receipt.status,
+            "From: " + receipt.from,
+            "To: " + receipt.to
+        ]);
+
+        if (receipt.status !== 1) {
+            setActionStatus(label + " reverted on-chain.");
+            await loadTicket();
+            return;
+        }
+
+        await loadTicket();
+
+        setActionStatus(
+            label + " confirmed! Ticket information refreshed from blockchain."
+        );
+
+    } catch (error) {
+        const receipt =
+            error?.receipt ||
+            error?.info?.receipt ||
+            null;
+
+        const hash =
+            tx?.hash ||
+            error?.transactionHash ||
+            receipt?.hash ||
+            null;
+
+        if (receipt && receipt.status === 0) {
+            showTransactionEvidence([
+                "Outcome: REVERTED ON-CHAIN",
+                "Action: " + label,
+                "Transaction hash: " + (hash || "Unavailable"),
+                "Block number: " + receipt.blockNumber,
+                "Gas used: " + receipt.gasUsed.toString(),
+                "Receipt status: 0",
+                "From: " + receipt.from,
+                "To: " + receipt.to
+            ]);
+
+            setActionStatus(label + " reverted on-chain.");
+            await loadTicket();
+
+        } else if (transactionRejected(error)) {
+            showTransactionEvidence([
+                "Outcome: WALLET REJECTED",
+                "Action: " + label,
+                "Transaction hash: None",
+                "No transaction submitted to blockchain."
+            ]);
+
+            setActionStatus("Transaction rejected in MetaMask.");
+
+        } else {
+            showTransactionEvidence([
+                "Outcome: ERROR",
+                "Action: " + label,
+                "Transaction hash: " + (hash || "None"),
+                "Error: " + errorMessage(error)
+            ]);
+
+            setActionStatus(
+                label + " failed: " + errorMessage(error)
+            );
+        }
+
+        console.error(label + " error:", error);
+
+    } finally {
+        busy = false;
+
+        buttonIds.forEach(id => {
+            el(id).disabled = false;
+        });
+
+        await updateActions();
+    }
+}
+
+el("buyPrimaryButton").addEventListener("click", () => {
 		if (!ticketState) return;
 		const price = ticketState.primaryPrice;
 
