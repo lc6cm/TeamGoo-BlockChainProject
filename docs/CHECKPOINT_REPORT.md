@@ -114,3 +114,38 @@ The contract relies on authorized participants to report real-world issuance and
 ## 15. Change Log
 
 Since Checkpoint 1, the team implemented and deployed `TicketMarketplace`, added automated tests and deployment scripts, connected the frontend to live contract state, and executed primary purchase and resale transactions. These changes demonstrate the project's transition from planning to a working blockchain application.
+
+## 16. Progress Since Checkpoint 2
+
+The following work was completed after Checkpoint 2. It represents continued development and testing, not the completion of Checkpoint 3.
+
+### Frontend Improvements
+
+- Added clearer MetaMask wallet connection and DIDLab network checks, including handling for missing wallets and incorrect networks.
+- Continued reading Ticket #1 directly from the deployed contract to display its owner, issuer, price, listing status, and redemption status.
+- Added transaction evidence messages for pending, confirmed, on-chain reverted, and wallet-rejected outcomes.
+- Added a transaction receipt verification feature that displays the result of an existing transaction hash.
+- Added a listener for the contract's `Transfer` event that calls `loadTicket()` to refresh displayed ticket information.
+
+### Blockchain Testing and Evidence
+
+- Completed a secondary ticket purchase using a separate test wallet and verified the successful transaction on the DIDLab explorer.
+- Confirmed that the frontend detected a `Transfer` event for Ticket #1 after a resale listing.
+- Verified an actual reverted transaction on-chain: `0x4307d2aefa6d6087dc1f7c5fe2cc3fd90618b6e31936fc90812b763ea3ae85cf`. Its receipt had status `0`, used 23,784 gas, and did not change contract state.
+- Tested rejection in MetaMask and confirmed the frontend reported that no transaction hash was created.
+- Ran the Hardhat contract test suite again: **18 tests passing** (4 `ProjectAnchor` tests and 14 `TicketMarketplace` tests).
+
+### Repository and Documentation
+
+- Organized a separate `frontend/` directory containing `server.js`, `package.json`, `public/index.html`, and an ABI generated from the compiled `TicketMarketplace` contract.
+- Tested the frontend locally with `npm start` and confirmed that it could read live DIDLab ticket data.
+- Reviewed `.gitignore` to exclude `.env`, generated files, and a local HTML backup.
+- Performed preliminary checks of Git history for accidentally committed key material; these checks did not reveal an obvious private key, but they were not a comprehensive audit.
+- Updated `docs/AI_RECORD.md` to document AI assistance and how its suggestions were verified.
+
+These updates extend the working Checkpoint 2 implementation. Remaining Checkpoint 3 work will be addressed when that checkpoint begins.
+
+### Contribution Summary
+
+- Joey: Repo organization, tested frontend, tested contract states, verified events
+- Lupe: Documentation, updated CHECKPOINT_REPORT, updated AI_RECORD

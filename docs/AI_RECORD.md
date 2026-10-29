@@ -1,54 +1,81 @@
-# AI Development Record
+# AI Record — TeamGoo Ticket Marketplace
 
 ## Tools Used
 
-* ChatGPT
+- ChatGPT
 
 ## What We Asked For
 
-* An outline of the required sections for `docs/PROPOSAL.md`.
-* Help identifying the stakeholders, assets, transactions, and other information for Activity 3 and Part A2 based on the team's initial problem document.
-* Help understanding what information belongs in the B2 disqualifier analysis.
-* Help converting information from Activity 7 into the C1 on-chain/off-chain data section.
-* Help creating and explaining a contract sketch for the ticket ownership and resale project.
-* Help understanding the purpose of the C2 contract sketch and C3 scope commitment.
-* Ideas for project milestones for Part E that fit the ticket ownership and resale project.
-* Help formatting evidence for the D3 compiled contract and passing tests section.
-* Help setting up and modifying the initial website template with project name, problem, and repository link.
+- Help outlining and writing sections of `docs/PROPOSAL.md`.
+- Help identifying stakeholders, assets, transactions, and blockchain suitability.
+- Help understanding the B2 disqualifier analysis and C1 on-chain/off-chain data requirements.
+- Help designing the smart contract sketch, scope commitment, and project milestones.
+- Help understanding and developing the `ProjectAnchor.sol` and `TicketMarketplace.sol` contracts and their tests.
+- Help creating and modifying the ticket marketplace frontend.
+- Guidance connecting the frontend to DIDLab using ethers.js and MetaMask.
+- Help implementing wallet connection, network detection, ticket information retrieval, and transaction status messages.
+- Help implementing a `Transfer` event listener to refresh ticket information.
+- Guidance testing pending, confirmed, reverted, and wallet-rejected transaction outcomes.
+- Help organizing the repository, generating `frontend/abi.js`, configuring `server.js`, and reviewing `.gitignore`.
+- Help running Hardhat tests and documenting the results.
 
 ## What It Produced
 
-ChatGPT produced suggested Markdown content and explanations for several sections of the M1 proposal, including:
+ChatGPT provided:
 
-* A1�A3 and B1�B3 proposal structure and content.
-* B2 disqualifier analysis.
-* C1 on-chain/off-chain data organization.
-* A contract sketch describing ticket state, state-changing functions, authorized callers, events, and out-of-scope functionality.
-* An explanation of the contract sketch and scope commitment.
-* Suggested milestones for M2 through M5.
-* Suggested wording and structure for D3 evidence showing compilation, passing tests, and the DIDLab chain ID.
-* Helped in creating Ticket Marketplace contracts, front end, and tests
-
-ChatGPT also helped explain the `ProjectAnchor.sol` requirements and the purpose of the associated tests.
+- Suggested Markdown content for the M1 proposal, including A1–A3, B1–B3, C1–C3, D3, and project milestones.
+- Explanations of smart contract functions, authorization, events, and blockchain data storage.
+- Guidance for developing Solidity contracts and Hardhat tests.
+- Frontend HTML and JavaScript suggestions using ethers.js.
+- Instructions for connecting MetaMask and detecting incorrect networks.
+- Transaction-handling logic displaying pending, confirmed, reverted, and rejected outcomes.
+- Code suggestions for monitoring the `Transfer` event and refreshing ticket information.
+- Instructions for checking transaction receipts and displaying an actual reverted transaction.
+- PowerShell commands for organizing the `frontend/` directory and generating the contract ABI.
+- Instructions for running and recording contract tests.
 
 ## How We Verified It
 
-We reviewed the generated proposal content against the M1 assignment requirements and the team's actual ticket resale problem. I also checked the contract and tests in the repository rather than assuming the generated code was correct.
+We reviewed AI-generated suggestions against the assignment requirements and our actual project implementation.
 
-For the Solidity contract, we verified that `ProjectAnchor.sol`:
+**Smart contracts and tests**
 
-* Stores a `bytes32` commitment and update timestamp.
-* Sets the deployer as the owner.
-* Restricts the `anchor()` function to the owner.
-* Rejects an empty commitment using a custom error.
-* Emits the required `CommitmentAnchored` event with indexed parameters.
-* Provides a read function returning the commitment and timestamp.
-* Visited the website on the provided domain, tested transactions and frontned
+- Reviewed the Solidity contracts and their intended behavior.
+- Compiled the contracts using Hardhat.
+- Executed `npx hardhat test`.
+- Confirmed that all 18 tests passed: 4 `ProjectAnchor` tests and 14 `TicketMarketplace` tests.
+
+**Frontend and blockchain integration**
+
+- Opened the deployed website at `https://teamgoo.didlab.org`.
+- Connected MetaMask to DIDLab (chain ID 252501).
+- Retrieved Ticket #1 information from the deployed contract.
+- Verified that the website displayed ownership, listing status, price, and redemption information.
+- Completed a secondary ticket purchase and checked the confirmed transaction on the DIDLab block explorer.
+- Verified that the frontend detected a `Transfer` event and refreshed ticket information.
+- Tested wallet rejection and confirmed that no transaction was submitted.
+- Verified an actual on-chain reverted transaction with receipt status `0` and no contract state change.
+- Tested the frontend locally using `npm start` and confirmed that ticket information loaded successfully.
+
+**Repository**
+
+- Created the required `frontend/` structure containing `server.js`, `package.json`, `abi.js`, and `public/index.html`.
+- Generated the ABI from the compiled `TicketMarketplace` artifact and checked that the required functions and events were present.
+- Reviewed `.gitignore` to ensure `.env` and generated development files were excluded.
+- Checked Git history for obvious private-key exposure.
 
 ## What It Got Wrong
 
-Some of the initial AI-generated material was too general and required correction or additional consideration before being used. In particular, the B2 D4 analysis initially did not explicitly identify who could falsify each critical fact without detection. I recognized that the assignment specifically requires a detailed explanation of how each critical fact enters the system, who reports it, and who could falsify it.
+Some initial AI-generated proposal content was too general and required revision. In particular, the B2 D4 analysis initially did not sufficiently explain who could falsify critical information and how that information entered the system.
 
-The AI also initially suggested proposal wording before all repository details had been verified. I therefore checked the actual contract, test files, repository structure, and terminal results before treating those parts as verified.
+The AI also suggested wording and implementation steps before all repository details had been verified. We checked the actual source files, contract behavior, and test output rather than assuming the suggestions were correct.
 
-The AI-generated Solidity and test code was not treated as automatically correct. The contract was checked against the assignment requirements, compiled with Hardhat, and tested successfully before being used as evidence.
+During repository organization, one suggested PowerShell command was accidentally combined with another, causing an error. The commands were separated and rerun successfully.
+
+The initial ABI verification search did not return results because it assumed a particular JSON spacing format. A broader search confirmed that the required functions and events were present.
+
+The reverted-transaction verification feature retrieves the receipt of an existing failed transaction rather than submitting the failed transaction through that feature. We verified the actual on-chain failure separately.
+
+## How AI Was Used
+
+AI was used as a development and learning assistant for explanations, code suggestions, troubleshooting, testing procedures, and documentation. The team reviewed the suggestions, executed the commands, tested the implementation, and verified blockchain results before using them as project evidence.
