@@ -1,4 +1,4 @@
-
+﻿
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -229,15 +229,15 @@
 			</div>
 
 			<p class="muted">Ticket price</p>
-			<div id="ticketPrice" class="price">—</div>
+			<div id="ticketPrice" class="price">â€”</div>
 
 			<div class="details">
-				<div class="detail-row"><span>Listing status</span><span id="listingStatus">—</span></div>
-				<div class="detail-row"><span>Current holder</span><span id="ticketOwner">—</span></div>
-				<div class="detail-row"><span>Issuer</span><span id="ticketIssuer">—</span></div>
-				<div class="detail-row"><span>Secondary seller</span><span id="secondarySeller">—</span></div>
-				<div class="detail-row"><span>Secondary price</span><span id="secondaryPrice">—</span></div>
-				<div class="detail-row"><span>Redeemed</span><span id="ticketRedeemed">—</span></div>
+				<div class="detail-row"><span>Listing status</span><span id="listingStatus">â€”</span></div>
+				<div class="detail-row"><span>Current holder</span><span id="ticketOwner">â€”</span></div>
+				<div class="detail-row"><span>Issuer</span><span id="ticketIssuer">â€”</span></div>
+				<div class="detail-row"><span>Secondary seller</span><span id="secondarySeller">â€”</span></div>
+				<div class="detail-row"><span>Secondary price</span><span id="secondaryPrice">â€”</span></div>
+				<div class="detail-row"><span>Redeemed</span><span id="ticketRedeemed">â€”</span></div>
 			</div>
 
 			<div class="action-panel">
@@ -284,7 +284,8 @@
 		"function buyPrimaryTicket(uint256 tokenId) payable",
 		"function listTicket(uint256 tokenId, uint256 price)",
 		"function cancelListing(uint256 tokenId)",
-		"function buySecondaryTicket(uint256 tokenId) payable"
+		"function buySecondaryTicket(uint256 tokenId) payable",
+"event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
 		];
 
 		document.getElementById("contractAddress").textContent = CONTRACT_ADDRESS;
@@ -574,7 +575,7 @@
 		}
 		}
 
-		
+
 function showTransactionEvidence(lines) {
     el("transactionEvidence").textContent = lines.join("\n");
 }
@@ -795,7 +796,34 @@ el("buyPrimaryButton").addEventListener("click", () => {
 		});
 		}
 
-		// Initial public read; the page does not require a connected wallet.
+
+// Watch on-chain Transfer events for Ticket #1.
+async function watchTicketTransfers() {
+    try {
+        if (!readProvider) {
+            readProvider = new ethers.JsonRpcProvider(DIDLAB_RPC, 252501);
+        }
+
+        const contract = new ethers.Contract(
+            CONTRACT_ADDRESS, CONTRACT_ABI, readProvider
+        );
+
+        await contract.on("Transfer", async (from, to, tokenId) => {
+            if (tokenId === BigInt(TOKEN_ID)) {
+                console.log("Transfer event detected for Ticket #1");
+                await loadTicket();
+            }
+        });
+
+        console.log("Watching Transfer events for Ticket #1");
+    } catch (error) {
+        console.error("Event listener error:", error);
+    }
+}
+
+watchTicketTransfers();
+
+// Initial public read; the page does not require a connected wallet.
 		checkNetwork();
 		loadTicket();
 	</script>
