@@ -256,6 +256,8 @@
 				<button id="cancelListingButton" class="secondary-button" hidden>Cancel Resale Listing</button>
 				<p id="actionStatus" class="status">Connect MetaMask to use ticket actions.</p>
                 <h3>Transaction Evidence</h3>
+                <input id="verifyTxHash" type="text" placeholder="Transaction hash" style="width:100%;max-width:650px">
+                <button id="verifyTxButton" class="secondary-button">Verify Transaction</button>
                 <pre id="transactionEvidence" class="status"
                      style="white-space:pre-wrap;overflow-wrap:anywhere">No transaction submitted yet.</pre>
 
@@ -822,6 +824,55 @@ async function watchTicketTransfers() {
 }
 
 watchTicketTransfers();
+
+
+// Retrieve an existing transaction receipt directly from DIDLab.
+el("verifyTxButton").addEventListener("click", async () => {
+    const hash = el("verifyTxHash").value.trim();
+
+    if (!ethers.isHexString(hash, 32)) {
+        setActionStatus("Enter a valid transaction hash.");
+        return;
+    }
+
+    el("verifyTxButton").disabled = true;
+    showTransactionEvidence(["Checking transaction on DIDLab...", hash]);
+
+    try {
+        if (!readProvider) {
+            readProvider = new ethers.JsonRpcProvider(DIDLAB_RPC, 252501);
+        }
+
+        const receipt = await readProvider.getTransactionReceipt(hash);
+
+        if (!receipt) {
+            showTransactionEvidence([
+                "Outcome: PENDING OR NOT FOUND",
+                "Transaction hash: " + hash,
+                "No confirmed receipt available."
+            ]);
+            return;
+        }
+
+        showTransactionEvidence([
+            "Outcome: " + (receipt.status === 0 ? "REVERTED ON-CHAIN" : "CONFIRMED"),
+            "Transaction hash: " + receipt.hash,
+            "Block number: " + receipt.blockNumber,
+            "Gas used: " + receipt.gasUsed.toString(),
+            "Receipt status: " + receipt.status,
+            "From: " + receipt.from,
+            "To: " + receipt.to,
+            "Contract state changed: " +
+                (receipt.status === 0 ? "No (reverted)" : "Check transaction")
+        ]);
+
+        await loadTicket();
+    } catch (error) {
+        showTransactionEvidence(["Verification failed: " + errorMessage(error)]);
+    } finally {
+        el("verifyTxButton").disabled = false;
+    }
+});
 
 // Initial public read; the page does not require a connected wallet.
 		checkNetwork();
