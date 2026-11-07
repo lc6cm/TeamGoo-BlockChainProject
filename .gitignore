@@ -4,3 +4,4 @@ artifacts/
 cache/ 
 .vs/ 
 public/index.backup.html
+offchain/
