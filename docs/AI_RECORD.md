@@ -18,6 +18,15 @@
 - Guidance testing pending, confirmed, reverted, and wallet-rejected transaction outcomes.
 - Help organizing the repository, generating `frontend/abi.js`, configuring `server.js`, and reviewing `.gitignore`.
 - Help running Hardhat tests and documenting the results.
+- Help developing `TicketRecordRegistry.sol` with ADMIN, SUBMITTER, and VERIFIER roles.
+- Guidance encrypting a ticket issuance record using AES-256-GCM and uploading it to IPFS.
+- Help calculating SHA-256 hashes, retrieving files, and verifying their integrity.
+- Help anchoring an encrypted record's digest and CID on DIDLab.
+- Help demonstrating how changing one bit affects a file's hash.
+- Guidance testing authorized and unauthorized wallet actions, self-verification, and role revocation.
+- Help developing automated security tests and testing direct contract calls through the browser console.
+- Help analyzing blockchain privacy, public data exposure, and administrative governance.
+- Help preparing assignment evidence and documentation.
 
 ## What It Produced
 
@@ -33,6 +42,12 @@ ChatGPT provided:
 - Instructions for checking transaction receipts and displaying an actual reverted transaction.
 - PowerShell commands for organizing the `frontend/` directory and generating the contract ABI.
 - Instructions for running and recording contract tests.
+- Solidity code suggestions for the ticket record registry and role-based permissions.
+- JavaScript scripts for encryption, IPFS retrieval, SHA-256 verification, and bit-flipping.
+- Hardhat commands for deploying the registry, granting roles, revoking roles, and testing permissions.
+- Instructions for decoding smart contract events and custom errors.
+- Guidance for testing unauthorized contract calls through MetaMask and the browser console.
+- Suggested privacy field enumeration and governance analysis content.
 
 ## How We Verified It
 
@@ -44,6 +59,9 @@ We reviewed AI-generated suggestions against the assignment requirements and our
 - Compiled the contracts using Hardhat.
 - Executed `npx hardhat test`.
 - Confirmed that all 18 tests passed: 4 `ProjectAnchor` tests and 14 `TicketMarketplace` tests.
+- Compiled and deployed `TicketRecordRegistry.sol` to DIDLab.
+- Ran `npx hardhat test test/TicketRecordRegistry.test.js` and confirmed all 12 tests passed.
+- Tested unauthorized anchoring, unauthorized verification, self-verification, nonexistent records, duplicate identifiers, revoked permissions, and invalid inputs.
 
 **Frontend and blockchain integration**
 
@@ -57,12 +75,39 @@ We reviewed AI-generated suggestions against the assignment requirements and our
 - Verified an actual on-chain reverted transaction with receipt status `0` and no contract state change.
 - Tested the frontend locally using `npm start` and confirmed that ticket information loaded successfully.
 
+**Encryption and IPFS**
+
+- Encrypted a ticket issuance record using AES-256-GCM.
+- Uploaded the encrypted file to IPFS through Pinata.
+- Retrieved the encrypted file and confirmed its size was 306 bytes.
+- Calculated the SHA-256 hash and confirmed it matched the expected digest.
+- Changed exactly one bit in the encrypted file and confirmed that the resulting SHA-256 hash was different.
+- Verified that the encrypted file's hash matched the digest anchored on-chain.
+
+**Registry and access control**
+
+- Granted SUBMITTER permission to Wallet A and VERIFIER permission to Wallet B.
+- Confirmed Wallet A successfully anchored a ticket issuance record.
+- Confirmed Wallet B successfully verified the record.
+- Checked the `RecordAnchored` and `RecordVerified` events using the DIDLab explorer.
+- Confirmed Wallet A's self-verification attempt was rejected with `SelfVerification`.
+- Confirmed Wallet C's unauthorized verification attempt was rejected with `NotAuthorized`.
+- Revoked Wallet A's temporary VERIFIER role and confirmed the permission was removed.
+- Tested a direct contract call from Wallet C through the browser console and confirmed the smart contract rejected it.
+
+**Privacy and governance**
+
+- Reviewed the fields exposed through contract storage, calldata, and events.
+- Analyzed privacy risks involving record identifiers, wallet addresses, and IPFS CIDs.
+- Reviewed the powers of the ADMIN role and possible safeguards such as multi-signature wallets and timelocks.
+
 **Repository**
 
 - Created the required `frontend/` structure containing `server.js`, `package.json`, `abi.js`, and `public/index.html`.
 - Generated the ABI from the compiled `TicketMarketplace` artifact and checked that the required functions and events were present.
 - Reviewed `.gitignore` to ensure `.env` and generated development files were excluded.
 - Checked Git history for obvious private-key exposure.
+- Kept the encryption recovery key and local off-chain files out of Git.
 
 ## What It Got Wrong
 
@@ -76,6 +121,16 @@ The initial ABI verification search did not return results because it assumed a 
 
 The reverted-transaction verification feature retrieves the receipt of an existing failed transaction rather than submitting the failed transaction through that feature. We verified the actual on-chain failure separately.
 
+Some suggested commands needed corrections because PowerShell and the Hardhat JavaScript console use different syntax.
+
+The AI initially suggested editing `AI_RECORD.md` at the repository root instead of the existing file in `docs/`.
+
+The AI also initially treated the frontend's hidden ticket actions as proof of registry role enforcement. We clarified that the smart contract enforces authorization independently of the frontend.
+
+We verified all important results using actual contract calls, transaction receipts, file hashes, and automated tests rather than relying only on AI explanations.
+
 ## How AI Was Used
 
 AI was used as a development and learning assistant for explanations, code suggestions, troubleshooting, testing procedures, and documentation. The team reviewed the suggestions, executed the commands, tested the implementation, and verified blockchain results before using them as project evidence.
+
+For the registry assignment, AI also helped with encryption, IPFS storage, SHA-256 verification, access-control testing, privacy analysis, and governance documentation. The team independently verified the contract behavior and security test results.

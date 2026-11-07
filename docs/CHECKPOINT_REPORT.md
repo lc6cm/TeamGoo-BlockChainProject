@@ -145,7 +145,153 @@ The following work was completed after Checkpoint 2. It represents continued dev
 
 These updates extend the working Checkpoint 2 implementation. Remaining Checkpoint 3 work will be addressed when that checkpoint begins.
 
-### Contribution Summary
+## 17. Additional Work — Encryption, Access Control, and Security
 
-- Joey: Repo organization, tested frontend, tested contract states, verified events
-- Lupe: Documentation, updated CHECKPOINT_REPORT, updated AI_RECORD
+The following work was completed after Checkpoint 2 as additional development for the TeamGoo Ticket Marketplace. This work is not a new checkpoint report.
+
+### Encrypted Ticket Records and IPFS
+
+- Created a ticket issuance record for Ticket #1.
+- Encrypted the record using AES-256-GCM before uploading it to IPFS through Pinata.
+- Stored the encryption key locally and excluded it from Git.
+- Uploaded the encrypted file with CID `bafkreif6muweduc3z54kkpofwgwlq7htt4i4jmj66i75nfl7wns6mbbfma`.
+- Confirmed the encrypted file was 306 bytes.
+- Retrieved the file programmatically and verified its SHA-256 hash matched the expected digest.
+
+**Original SHA-256:**
+
+`be652c41d05bcf78a53dc5b1acb87cf39f11c4b13ef23fd6957fb365e6042560`
+
+**IPFS gateway:**
+
+https://gateway.pinata.cloud/ipfs/bafkreif6muweduc3z54kkpofwgwlq7htt4i4jmj66i75nfl7wns6mbbfma
+
+### Smart Contract Development and Deployment
+
+- Developed `TicketRecordRegistry.sol` to anchor encrypted ticket records on DIDLab.
+- Implemented ADMIN, SUBMITTER, and VERIFIER roles using OpenZeppelin AccessControl.
+- Added `anchorRecord()` and `verifyRecord()` functions.
+- Added `RecordAnchored` and `RecordVerified` events.
+- Implemented custom errors for unauthorized access, self-verification, duplicate records, nonexistent records, invalid inputs, and repeated verification.
+
+**Registry contract:** `0x2d8A3B142378f6dAd929c6aF73bD8c9C0d823963`
+
+**Deployment transaction:** `0xa3726c9fe60321a5e1bad842312936b93a025d56f95956c0e90418de713cb536`
+
+**Successful anchoring transaction:** `0x9403210dae9e05b328f1e0c7a2646e1ee5751ab1fff8399acc5d5dfb8d873eb9`
+
+**Record ID:** `0x27b32b0fbeb1c80a6150d865a7ae16fab97fa1c458ca24e3ce8494fba44b1281`
+
+The anchored record stores the encrypted file's SHA-256 digest and IPFS CID. The `RecordAnchored` event was confirmed using the DIDLab explorer.
+
+### File Integrity Demonstration
+
+- Created `scripts/bitFlipDemo.js` to demonstrate file integrity.
+- Modified exactly one bit of the encrypted file.
+- Confirmed the original and modified files produced different SHA-256 hashes.
+
+**Original hash:** `be652c41d05bcf78a53dc5b1acb87cf39f11c4b13ef23fd6957fb365e6042560`
+
+**Modified hash:** `aa77d32448dc584875ccd7d6e9d469e503f755e5410acf7a41633c60e86de1b6`
+
+**File size:** 306 bytes (2,448 bits)
+
+**Bits changed:** 1
+
+This demonstrates that changing even one bit causes the computed digest to differ from the anchored digest.
+
+### Role-Based Access Control Testing
+
+Three wallets were used to demonstrate permission enforcement.
+
+- **Wallet A:** Authorized submitter and administrator.
+- **Wallet B:** Authorized independent verifier.
+- **Wallet C:** Unauthorized wallet with neither SUBMITTER nor VERIFIER permissions.
+
+The following outcomes were demonstrated:
+
+1. Wallet A successfully anchored the encrypted ticket record.
+2. Wallet B successfully verified the record, emitting `RecordVerified`.
+3. Wallet A attempted self-verification and received `SelfVerification`.
+4. Wallet C attempted unauthorized verification and received `NotAuthorized`.
+
+**Successful verification transaction:**
+
+`0xa1524e24c75e3d3fe6018e49f474b69aaf8443b32c5c3cf6ae4a28e1c95f5577`
+
+Wallet A was temporarily granted VERIFIER permission to test self-verification. The permission was revoked afterward, and `hasRole()` returned `false`.
+
+**Role revocation transaction:**
+
+`0xf0f459a7bb867221dcf4089923678690ab66218be0c0771485ec4388b49d210b`
+
+### Automated Security Testing
+
+Created and executed `test/TicketRecordRegistry.test.js`.
+
+**Result: 12 tests passing.**
+
+Tests covered:
+
+- Successful anchoring and verification.
+- Unauthorized anchoring.
+- Unauthorized verification.
+- Self-verification.
+- Verification of nonexistent records.
+- Duplicate record identifiers.
+- Actions after role revocation.
+- Empty record identifiers.
+- Empty digests.
+- Empty CIDs.
+- Repeated verification.
+
+All required security refusal paths passed.
+
+### Frontend Security Demonstration
+
+- Connected Wallet C to the deployed TeamGoo website.
+- Confirmed the website displayed no available ticket action for that wallet and ticket state.
+- Used the browser developer console to call `verifyRecord()` directly on `TicketRecordRegistry`.
+- Confirmed the smart contract rejected the unauthorized call with `NotAuthorized`.
+- Recorded revert data `0xea8e4eb5`.
+
+This demonstrated that authorization is enforced by the smart contract rather than relying on frontend controls. The current frontend does not yet provide role-aware Anchor and Verify controls for the registry.
+
+### Privacy and Governance Review
+
+- Enumerated registry fields exposed through contract state, calldata, and events.
+- Reviewed privacy risks associated with wallet addresses, record identifiers, timestamps, and IPFS CIDs.
+- Used a randomly generated record identifier instead of deriving it from personal information.
+- Confirmed that wallet addresses are pseudonymous rather than anonymous.
+- Evaluated the risks of publicly accessible encrypted records and compromised encryption keys.
+- Analyzed the ADMIN role and its ability to grant or revoke permissions.
+- Proposed multi-signature administrative control and timelocks as potential production safeguards.
+
+These governance safeguards are recommendations and are not currently implemented in the deployed registry.
+
+### Repository and Documentation
+
+- Added `contracts/TicketRecordRegistry.sol`.
+- Added `test/TicketRecordRegistry.test.js`.
+- Added scripts for encryption, artifact verification, and bit-flipping.
+- Updated `.gitignore` to exclude local off-chain files and encryption keys.
+- Updated `docs/AI_RECORD.md` with the additional AI assistance and verification procedures.
+- Prepared screenshots and written evidence for encryption, anchoring, access control, security testing, and privacy analysis.
+
+### Remaining Work
+
+- Integrate registry anchoring and verification controls into the ticket marketplace frontend.
+- Regenerate and include the registry ABI for frontend integration.
+- Confirm all required source files and documentation are committed.
+- Verify that no encryption keys or private information are included in Git.
+- Confirm contributions from both team members using Git history.
+
+This additional work extends the existing TeamGoo Ticket Marketplace with encrypted off-chain records, on-chain integrity anchoring, independent verification, role-based permissions, and automated security testing.
+
+Contribution Summary
+
+Joey: Smart contract development, DIDLab deployment, encryption and IPFS testing, wallet permission testing, automated security tests, blockchain verification, and evidence collection.
+
+Lupe: Repository management, project planning, documentation, CHECKPOINT_REPORT updates, and AI_RECORD updates.
+
+Contributions will be confirmed using Git history.
