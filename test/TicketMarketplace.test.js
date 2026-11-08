@@ -70,7 +70,9 @@ describe("TicketMarketplace", function () {
     await marketplace.connect(issuer).mintTicket(ticketId, price);
 
     await expect(
-      marketplace.connect(buyer).buyPrimaryTicket(ticketId, { value: price })
+      marketplace.connect(buyer).buyPrimaryTicket(ticketId, {
+        value: price
+      })
     )
       .to.emit(marketplace, "PrimaryTicketSold")
       .withArgs(ticketId, buyer.address, price);
@@ -196,6 +198,40 @@ describe("TicketMarketplace", function () {
     ).to.be.revertedWithCustomError(
       marketplace,
       "TicketAlreadyRedeemed"
+    );
+  });
+
+  it("blocks a reentrancy attempt during issuer payout", async function () {
+    const Attacker = await ethers.getContractFactory(
+      "ReentrancyAttacker"
+    );
+
+    const attacker = await Attacker.deploy(
+      await marketplace.getAddress()
+    );
+    await attacker.waitForDeployment();
+
+    const attackerAddress = await attacker.getAddress();
+
+    await marketplace.setIssuer(attackerAddress, true);
+
+    // The attacker contract must mint its own ticket
+    // so it receives the primary sale payout.
+    await attacker.mintAttackTicket(ticketId, price);
+
+    await marketplace.connect(buyer).buyPrimaryTicket(ticketId, {
+      value: price
+    });
+
+    // The malicious contract attempted to reenter.
+    expect(await attacker.attempted()).to.equal(true);
+
+    // The reentrant call was rejected.
+    expect(await attacker.blocked()).to.equal(true);
+
+    // The legitimate buyer still owns the ticket.
+    expect(await marketplace.ownerOf(ticketId)).to.equal(
+      buyer.address
     );
   });
 });
