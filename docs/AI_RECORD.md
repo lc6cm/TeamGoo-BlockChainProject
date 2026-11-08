@@ -10,13 +10,13 @@
 - Help identifying stakeholders, assets, transactions, and blockchain suitability.
 - Help understanding the B2 disqualifier analysis and C1 on-chain/off-chain data requirements.
 - Help designing the smart contract sketch, scope commitment, and project milestones.
-- Help understanding and developing the `ProjectAnchor.sol` and `TicketMarketplace.sol` contracts and their tests.
+- Help understanding and developing `ProjectAnchor.sol`, `TicketMarketplace.sol`, and their tests.
 - Help creating and modifying the ticket marketplace frontend.
 - Guidance connecting the frontend to DIDLab using ethers.js and MetaMask.
 - Help implementing wallet connection, network detection, ticket information retrieval, and transaction status messages.
 - Help implementing a `Transfer` event listener to refresh ticket information.
 - Guidance testing pending, confirmed, reverted, and wallet-rejected transaction outcomes.
-- Help organizing the repository, generating `frontend/abi.js`, configuring `server.js`, and reviewing `.gitignore`.
+- Help organizing the repository, generating the frontend ABI, configuring `server.js`, and reviewing `.gitignore`.
 - Help running Hardhat tests and documenting the results.
 - Help developing `TicketRecordRegistry.sol` with ADMIN, SUBMITTER, and VERIFIER roles.
 - Guidance encrypting a ticket issuance record using AES-256-GCM and uploading it to IPFS.
@@ -25,8 +25,15 @@
 - Help demonstrating how changing one bit affects a file's hash.
 - Guidance testing authorized and unauthorized wallet actions, self-verification, and role revocation.
 - Help developing automated security tests and testing direct contract calls through the browser console.
+- Help reviewing reentrancy protection, access control, input validation, and invalid state transitions.
 - Help analyzing blockchain privacy, public data exposure, and administrative governance.
-- Help preparing assignment evidence and documentation.
+- Guidance measuring transaction gas usage and confirmation latency.
+- Help retrieving transaction receipts, block numbers, timestamps, and event topics.
+- Help identifying exact Solidity event signatures using the contract ABI.
+- Help verifying on-chain state after minting Ticket #999.
+- Help preparing Checkpoint 1, 2, and 3 evidence Markdown files.
+- Help updating the cumulative checkpoint report and preparing it for PDF export.
+- Help preparing the Checkpoint 3 security, privacy, performance, and testing documentation.
 
 ## What It Produced
 
@@ -48,25 +55,40 @@ ChatGPT provided:
 - Instructions for decoding smart contract events and custom errors.
 - Guidance for testing unauthorized contract calls through MetaMask and the browser console.
 - Suggested privacy field enumeration and governance analysis content.
+- Security review guidance covering access control, reentrancy, input validation, and residual risks.
+- Hardhat console commands for measuring transaction submission and confirmation times.
+- Commands for retrieving transaction receipts, gas usage, block timestamps, and emitted events.
+- Commands for identifying event signatures and topic hashes from contract ABIs.
+- Markdown tables summarizing performance measurements and automated testing results.
+- Suggested content for `CP1_TeamGoo_evidence.md`, `CP2_TeamGoo_evidence.md`, and `CP3_TeamGoo_evidence.md`.
+- Updated checkpoint report content covering security, privacy, performance, and additional development.
+- Instructions for converting the checkpoint report from Markdown to PDF.
 
 ## How We Verified It
 
 We reviewed AI-generated suggestions against the assignment requirements and our actual project implementation.
 
-**Smart contracts and tests**
+### Smart Contracts and Tests
 
 - Reviewed the Solidity contracts and their intended behavior.
 - Compiled the contracts using Hardhat.
 - Executed `npx hardhat test`.
-- Confirmed that all 18 tests passed: 4 `ProjectAnchor` tests and 14 `TicketMarketplace` tests.
+- Confirmed that the complete test suite passed with 31 tests:
+  - ProjectAnchor: 4 tests.
+  - TicketMarketplace: 15 tests.
+  - TicketRecordRegistry: 12 tests.
 - Compiled and deployed `TicketRecordRegistry.sol` to DIDLab.
-- Ran `npx hardhat test test/TicketRecordRegistry.test.js` and confirmed all 12 tests passed.
+- Ran `npx hardhat test test/TicketRecordRegistry.test.js` and confirmed all 12 registry tests passed.
 - Tested unauthorized anchoring, unauthorized verification, self-verification, nonexistent records, duplicate identifiers, revoked permissions, and invalid inputs.
+- Reviewed the primary and secondary purchase functions for reentrancy risks.
+- Tested a malicious issuer attempting a reentrant purchase during its payout callback.
+- Confirmed the attempted reentrant purchase failed while the legitimate purchase succeeded.
+- Recognized that existing ticket-state checks also prevent the repeated purchase, so the test does not isolate ReentrancyGuard as the only protection.
 
-**Frontend and blockchain integration**
+### Frontend and Blockchain Integration
 
-- Opened the deployed website at `https://teamgoo.didlab.org`.
-- Connected MetaMask to DIDLab (chain ID 252501).
+- Opened the deployed website at https://teamgoo.didlab.org.
+- Connected MetaMask to DIDLab (chain ID `252501`).
 - Retrieved Ticket #1 information from the deployed contract.
 - Verified that the website displayed ownership, listing status, price, and redemption information.
 - Completed a secondary ticket purchase and checked the confirmed transaction on the DIDLab block explorer.
@@ -75,7 +97,7 @@ We reviewed AI-generated suggestions against the assignment requirements and our
 - Verified an actual on-chain reverted transaction with receipt status `0` and no contract state change.
 - Tested the frontend locally using `npm start` and confirmed that ticket information loaded successfully.
 
-**Encryption and IPFS**
+### Encryption and IPFS
 
 - Encrypted a ticket issuance record using AES-256-GCM.
 - Uploaded the encrypted file to IPFS through Pinata.
@@ -84,7 +106,7 @@ We reviewed AI-generated suggestions against the assignment requirements and our
 - Changed exactly one bit in the encrypted file and confirmed that the resulting SHA-256 hash was different.
 - Verified that the encrypted file's hash matched the digest anchored on-chain.
 
-**Registry and access control**
+### Registry and Access Control
 
 - Granted SUBMITTER permission to Wallet A and VERIFIER permission to Wallet B.
 - Confirmed Wallet A successfully anchored a ticket issuance record.
@@ -95,19 +117,83 @@ We reviewed AI-generated suggestions against the assignment requirements and our
 - Revoked Wallet A's temporary VERIFIER role and confirmed the permission was removed.
 - Tested a direct contract call from Wallet C through the browser console and confirmed the smart contract rejected it.
 
-**Privacy and governance**
+### Performance Measurements
+
+We used the Hardhat console to measure an actual ticket minting transaction on DIDLab.
+
+**Ticket #999 Minting Results:**
+
+- Transaction hash: `0x3e8a0d6148c78e4264151ceb2cda8a22c0a59b89e65e50df2a1f302a9403522c`
+- Submission latency: 0.412 seconds.
+- Confirmation wait: 0.668 seconds.
+- Total time: 1.080 seconds.
+- Gas used: 149,022.
+- Block number: 7,268,873.
+- Receipt status: 1 (successful).
+
+We also retrieved receipts for other transactions and recorded their gas usage.
+
+| Operation | Gas Used |
+|---|---:|
+| Resale listing | 92,834 |
+| Resale purchase | 44,293 |
+| Ticket minting | 149,022 |
+| Record anchoring | 185,361 |
+| Record verification | 33,278 |
+
+These values were obtained from transaction receipts rather than AI estimates.
+
+The timing results represent one observed transaction and should not be interpreted as an average.
+
+### On-Chain State Verification
+
+After minting Ticket #999, we used contract calls to verify:
+
+- Ticket #999 existed.
+- The marketplace contract held the ticket in escrow.
+- The issuer was Wallet A.
+- The primary price was 0.01 TRUST.
+- The ticket was available for primary purchase.
+- The total ticket count increased from 1 to 2.
+
+This confirmed that the transaction changed the deployed contract state.
+
+### Event Signature Verification
+
+We used the Hardhat console to inspect the deployed contracts' ABI event definitions.
+
+Verified signatures included:
+
+- `TicketListed(uint256,address,uint256)`
+- `SecondaryTicketSold(uint256,address,address,uint256)`
+- `TicketMinted(uint256,address,uint256)`
+- `Transfer(address,address,uint256)`
+- `RecordAnchored(bytes32,bytes32,string,address)`
+- `RecordVerified(bytes32,address)`
+
+We compared the minting, anchoring, and verification event topics with their transaction receipts.
+
+The listing and purchase signatures were confirmed against the ABI, but their event topics were not separately matched to the corresponding receipts during this review.
+
+### Privacy and Governance
 
 - Reviewed the fields exposed through contract storage, calldata, and events.
 - Analyzed privacy risks involving record identifiers, wallet addresses, and IPFS CIDs.
 - Reviewed the powers of the ADMIN role and possible safeguards such as multi-signature wallets and timelocks.
+- Documented residual risks involving privileged keys, operator redemption authority, encryption key compromise, and failed external payouts.
 
-**Repository**
+### Repository and Documentation
 
-- Created the required `frontend/` structure containing `server.js`, `package.json`, `abi.js`, and `public/index.html`.
+- Created the required `frontend/` structure containing `server.js`, `package.json`, the generated contract ABI, and `public/index.html`.
 - Generated the ABI from the compiled `TicketMarketplace` artifact and checked that the required functions and events were present.
 - Reviewed `.gitignore` to ensure `.env` and generated development files were excluded.
 - Checked Git history for obvious private-key exposure.
 - Kept the encryption recovery key and local off-chain files out of Git.
+- Reviewed the cumulative checkpoint report for outdated information and formatting problems.
+- Prepared separate Markdown evidence files for Checkpoints 1, 2, and 3.
+- Documented transaction hashes, block numbers, gas usage, test results, and security evidence.
+- Removed screenshot references from the report at the team's request.
+- Prepared the checkpoint report for conversion to PDF.
 
 ## What It Got Wrong
 
@@ -127,10 +213,24 @@ The AI initially suggested editing `AI_RECORD.md` at the repository root instead
 
 The AI also initially treated the frontend's hidden ticket actions as proof of registry role enforcement. We clarified that the smart contract enforces authorization independently of the frontend.
 
-We verified all important results using actual contract calls, transaction receipts, file hashes, and automated tests rather than relying only on AI explanations.
+During Checkpoint 3 documentation, the AI initially provided incomplete event signatures and marked some signatures as unverified. We inspected the actual contract ABI to identify the correct signatures and event topics.
+
+The AI initially described some transaction evidence without complete receipt metadata. We retrieved the actual transaction receipts to confirm block numbers, gas usage, statuses, and timestamps.
+
+Some report sections contained outdated checkpoint wording and test counts. These were updated to reflect the current implementation and 31 passing tests.
+
+The AI suggested adding screenshot references to the report, but the team chose to submit a text-based report without screenshots.
+
+We verified important results using actual contract calls, transaction receipts, file hashes, and automated tests rather than relying only on AI explanations.
 
 ## How AI Was Used
 
-AI was used as a development and learning assistant for explanations, code suggestions, troubleshooting, testing procedures, and documentation. The team reviewed the suggestions, executed the commands, tested the implementation, and verified blockchain results before using them as project evidence.
+AI was used as a development and learning assistant for explanations, code suggestions, troubleshooting, testing procedures, and documentation.
 
-For the registry assignment, AI also helped with encryption, IPFS storage, SHA-256 verification, access-control testing, privacy analysis, and governance documentation. The team independently verified the contract behavior and security test results.
+The team reviewed the suggestions, executed the commands, tested the implementation, and verified blockchain results before using them as project evidence.
+
+For Checkpoint 3, AI also helped with security testing, performance measurements, transaction receipt analysis, event signature verification, encrypted IPFS records, role-based access control, privacy analysis, and documentation.
+
+AI-generated code and explanations were not treated as proof of correctness. Contract behavior was checked through automated tests, live DIDLab transactions, and direct state verification.
+
+The final implementation, evidence selection, and submission decisions remained the responsibility of the team.

@@ -1,4 +1,4 @@
-# Checkpoint 2 Report — TeamGoo Ticket Marketplace
+# Checkpoint Report — TeamGoo Ticket Marketplace
 
 ## 1. Project Identity
 
@@ -59,7 +59,9 @@ Ticket #1 was purchased, listed for resale at `0.02` DIDLab tokens, and returned
 
 ## 8. Testing Evidence
 
-The most recent recorded test run had **18 passing tests** across `ProjectAnchor` and `TicketMarketplace`.
+The most recent recorded test run had **31 passing tests** across `ProjectAnchor`, `TicketMarketplace`, and 'TicketRecordRegistry.
+
+4 ProjectAnchor, 15 TicketMarketplace, and 12 TicketRecordRegistry
 
 **All Tests Passing for Ticket Marketplace**
 
@@ -79,12 +81,133 @@ The most recent recorded test run had **18 passing tests** across `ProjectAnchor
 
 ## 9. Security and Privacy Review
 
-*Reserved for Checkpoint 3.*
+### Access Control
+
+The TicketMarketplace contract restricts administrative functions using OpenZeppelin Ownable and authorized issuer/operator mappings.
+
+- Only the contract owner can authorize issuers and operators.
+- Only authorized issuers can mint tickets.
+- Only authorized operators can redeem tickets.
+- Only ticket owners can list tickets for resale.
+- Only the original seller can cancel a resale listing.
+
+The TicketRecordRegistry contract uses OpenZeppelin AccessControl to enforce ADMIN, SUBMITTER, and VERIFIER roles.
+
+Automated tests confirmed that unauthorized operations were rejected.
+
+### Vulnerability Classes Reviewed
+
+**1. Access Control**
+
+Tested unauthorized ticket minting, resale listing, redemption, record anchoring, and verification.
+
+Result: Unauthorized operations were rejected.
+
+**2. Reentrancy**
+
+Reviewed the primary and secondary purchase functions, which use OpenZeppelin ReentrancyGuard.
+
+Created ReentrancyAttacker.sol to simulate a malicious issuer attempting another purchase during its payout callback.
+
+Result: The attempted reentrant purchase failed, while the legitimate purchase succeeded. The test demonstrates that the attack was unsuccessful, although existing ticket-state checks also prevent the repeated purchase.
+
+**3. Invalid State Transitions and Input Validation**
+
+Tested duplicate ticket IDs, zero prices, incorrect payments, double redemption, duplicate registry records, and repeated verification.
+
+Result: All tested invalid operations were rejected.
+
+### Privacy Review
+
+The marketplace stores ticket IDs, wallet addresses, prices, ownership, and redemption status.
+
+The registry stores record identifiers, file digests, and IPFS CIDs.
+
+Ticket records are encrypted using AES-256-GCM before being uploaded to IPFS. Encryption keys remain off-chain and are excluded from Git.
+
+No names, email addresses, phone numbers, or other direct personal identifiers were identified in the reviewed on-chain data.
+
+Wallet addresses remain publicly visible and pseudonymous, so transaction activity can potentially be linked to individuals.
+
+### Residual Risks
+
+- Authorized operators can redeem eligible tickets without an additional on-chain approval from the holder.
+- Compromised administrator or operator keys could enable unauthorized actions.
+- Public IPFS ciphertext could become readable if its encryption key is compromised.
+- Direct payouts to contracts that reject Ether can cause purchase transactions to revert.
+
+### Security Testing Results
+
+The complete Hardhat test suite passed:
+
+- ProjectAnchor: 4 tests.
+- TicketMarketplace: 15 tests.
+- TicketRecordRegistry: 12 tests.
+
+**Total: 31 passing tests.**
+
+No confirmed exploitable reentrancy vulnerability was found in the tested purchase scenario. The review does not constitute a comprehensive independent security audit.
 
 ## 10. Performance Measurements
 
-*Reserved for Checkpoint 3.*
+Performance was measured using real transactions on DIDLab (Chain ID 252501).
 
+### Gas Usage
+
+| Operation | Gas Used | Transaction Status |
+|---|---:|---|
+| Resale listing | 92,834 | Successful |
+| Resale purchase | 44,293 | Successful |
+| Ticket minting | 149,022 | Successful |
+
+### Transaction Timing
+
+A new ticket minting transaction was submitted through the Hardhat console and timed using JavaScript Date.now().
+
+- Submission latency: 0.412 seconds.
+- Confirmation wait: 0.668 seconds.
+- Total transaction time: 1.080 seconds.
+- Gas used: 149,022.
+- Block number: 7,268,873.
+- Receipt status: 1 (successful).
+
+These are actual client-observed measurements, not estimates. The confirmation wait measures the interval between receiving the transaction hash and observing its receipt. Timing for the earlier resale transactions was not recorded.
+
+### Transaction Evidence
+
+**Resale listing**
+
+- Transaction: `0x93f3e27a96e8fc9850255cacb26f7a475d227b0e9a74dda9e8bb5297a6028bbc`
+- Block: 7,233,643
+- Gas: 92,834
+
+**Resale purchase**
+
+- Transaction: `0x9b7b02d09b1cb25aa616cfeeafa1b9d5c20c72691f605af1b51ceb46b8b93826`
+- Block: 7,233,762
+- Gas: 44,293
+
+**Ticket minting**
+
+- Transaction: `0x3e8a0d6148c78e4264151ceb2cda8a22c0a59b89e65e50df2a1f302a9403522c`
+- Block: 7,268,873
+- Gas: 149,022
+
+### On-Chain State Verification
+
+After minting Ticket #999:
+
+- The marketplace held the newly minted ticket in escrow.
+- The issuer was Wallet A.
+- The primary listing price was 0.01 TRUST.
+- The ticket was available for primary purchase.
+- The total ticket count increased from 1 to 2.
+
+This confirms that the transaction successfully updated the deployed contract state.
+
+### Performance Limitations
+
+The timing results represent one observed minting transaction, not an average across multiple runs. Network conditions, RPC response times, and transaction complexity may affect future measurements.
 ## 11. AI Development Record
 
 ChatGPT assisted with understanding requirements, Solidity and Git concepts, debugging, documentation, testing, deployment, and frontend integration. See `docs/AI_RECORD.md`.
@@ -101,7 +224,7 @@ Confirm contributions using Git history.
 
 The contract relies on authorized participants to report real-world issuance and redemption accurately. Earlier deployment and compiler compatibility issues were resolved.
 
-## 14. Plan for Checkpoint 3
+## 14. Checkpoint 3 Completion Checklist
 
 - Test the marketplace end to end with separate wallets.
 - Ensure primary purchases and resale transactions work for other users.
@@ -133,7 +256,7 @@ The following work was completed after Checkpoint 2. It represents continued dev
 - Confirmed that the frontend detected a `Transfer` event for Ticket #1 after a resale listing.
 - Verified an actual reverted transaction on-chain: `0x4307d2aefa6d6087dc1f7c5fe2cc3fd90618b6e31936fc90812b763ea3ae85cf`. Its receipt had status `0`, used 23,784 gas, and did not change contract state.
 - Tested rejection in MetaMask and confirmed the frontend reported that no transaction hash was created.
-- Ran the Hardhat contract test suite again: **18 tests passing** (4 `ProjectAnchor` tests and 14 `TicketMarketplace` tests).
+- Ran the Hardhat contract test suite again: **31 tests passing** (4 `ProjectAnchor` tests, 15 `TicketMarketplace`, 12 'TicketRecordRegistry' tests).
 
 ### Repository and Documentation
 
@@ -143,7 +266,7 @@ The following work was completed after Checkpoint 2. It represents continued dev
 - Performed preliminary checks of Git history for accidentally committed key material; these checks did not reveal an obvious private key, but they were not a comprehensive audit.
 - Updated `docs/AI_RECORD.md` to document AI assistance and how its suggestions were verified.
 
-These updates extend the working Checkpoint 2 implementation. Remaining Checkpoint 3 work will be addressed when that checkpoint begins.
+These updates extend the working Checkpoint 2 implementation.
 
 ## 17. Additional Work — Encryption, Access Control, and Security
 
