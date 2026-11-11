@@ -1,0 +1,882 @@
+﻿
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>TeamGoo | Ticket Marketplace</title>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.5/ethers.umd.min.js"></script>
+	<style>
+		* {
+			box-sizing: border-box;
+		}
+
+		body {
+			font-family: Arial, sans-serif;
+			max-width: 1000px;
+			margin: 0 auto;
+			padding: 32px 20px;
+			line-height: 1.6;
+			color: #202938;
+			background: #f4f6fa;
+		}
+
+		header {
+			margin-bottom: 28px;
+		}
+
+			header p, .muted {
+				color: #657084;
+			}
+
+		h1 {
+			margin-bottom: 0;
+		}
+
+		h2 {
+			margin-top: 0;
+			font-size: 1.25rem;
+		}
+
+		section {
+			margin: 24px 0;
+			padding: 24px;
+			background: white;
+			border: 1px solid #e0e5ed;
+			border-radius: 14px;
+			box-shadow: 0 3px 12px rgba(20,35,60,.04);
+		}
+
+		button {
+			padding: 11px 16px;
+			margin: 4px 5px 4px 0;
+			border: 0;
+			border-radius: 8px;
+			background: #2457d6;
+			color: white;
+			font-size: .95rem;
+			font-weight: bold;
+			cursor: pointer;
+		}
+
+			button:hover {
+				background: #1945b5;
+			}
+
+			button:disabled {
+				background: #aab4c5;
+				cursor: not-allowed;
+			}
+
+		.secondary-button {
+			background: #e9eef9;
+			color: #24448b;
+		}
+
+			.secondary-button:hover {
+				background: #dce5f8;
+			}
+
+		.ticket-card {
+			border: 1px solid #dce3ed;
+			border-radius: 12px;
+			padding: 20px;
+			margin-top: 18px;
+		}
+
+		.ticket-top {
+			display: flex;
+			justify-content: space-between;
+			align-items: flex-start;
+			gap: 12px;
+			flex-wrap: wrap;
+		}
+
+			.ticket-top h3 {
+				margin: 0;
+				font-size: 1.2rem;
+			}
+
+		.price {
+			font-size: 1.8rem;
+			font-weight: bold;
+			margin: 12px 0;
+		}
+
+		.badge {
+			display: inline-block;
+			padding: 5px 10px;
+			border-radius: 999px;
+			background: #e2f7e9;
+			color: #176b37;
+			font-size: .85rem;
+			font-weight: bold;
+		}
+
+			.badge.inactive {
+				background: #edf0f5;
+				color: #505b6d;
+			}
+
+		.details {
+			border-top: 1px solid #e8ecf2;
+			margin-top: 16px;
+			padding-top: 12px;
+		}
+
+		.detail-row {
+			display: flex;
+			justify-content: space-between;
+			gap: 16px;
+			padding: 7px 0;
+		}
+
+			.detail-row span:first-child {
+				color: #657084;
+			}
+
+			.detail-row span:last-child {
+				text-align: right;
+				overflow-wrap: anywhere;
+			}
+
+		.status {
+			overflow-wrap: anywhere;
+			font-size: .92rem;
+		}
+
+		.action-panel {
+			margin-top: 20px;
+			padding-top: 16px;
+			border-top: 1px solid #e8ecf2;
+		}
+
+		input {
+			width: 190px;
+			max-width: 100%;
+			padding: 10px;
+			border: 1px solid #cbd4e2;
+			border-radius: 8px;
+			font-size: 1rem;
+		}
+
+		.small-note {
+			font-size: .88rem;
+			color: #657084;
+		}
+
+		code {
+			overflow-wrap: anywhere;
+		}
+
+		a {
+			color: #2457d6;
+		}
+
+		[hidden] {
+			display: none !important;
+		}
+
+		@media (max-width: 600px) {
+			body {
+				padding: 20px 12px;
+			}
+
+			section {
+				padding: 18px;
+			}
+
+			.detail-row {
+				flex-direction: column;
+				gap: 2px;
+			}
+
+				.detail-row span:last-child {
+					text-align: left;
+				}
+		}
+	</style>
+</head>
+<body>
+	<header>
+		<h1>TeamGoo Ticket Marketplace</h1>
+		<p>A blockchain-based ticket marketplace for transparent ownership, transfers, and redemption records.</p>
+	</header>
+
+	<section>
+		<h2>Blockchain Connection</h2>
+		<p><strong>Network:</strong> DIDLab</p>
+		<p><strong>Chain ID:</strong> 252501</p>
+		<p><strong>Contract address:</strong><br><code id="contractAddress"></code></p>
+		<button id="connectWallet">Connect MetaMask</button>
+		<p id="walletStatus" class="status">Wallet not connected. Public ticket information is still available.</p>
+		<p id="networkStatus" class="status">Checking wallet network...</p>
+	</section>
+
+	<section>
+		<h2>Ticket Marketplace</h2>
+		<p class="muted">Ticket information is retrieved from the deployed smart contract on DIDLab.</p>
+		<button id="refreshTicket" class="secondary-button">Refresh Ticket #1</button>
+		<p id="ticketStatus" class="status">Loading ticket information...</p>
+
+		<div class="ticket-card">
+			<div class="ticket-top">
+				<div>
+					<h3>Ticket #1</h3>
+					<p class="muted">TeamGoo Ticket (TGT)</p>
+				</div>
+				<span id="listingBadge" class="badge inactive">Checking status...</span>
+			</div>
+
+			<p class="muted">Ticket price</p>
+			<div id="ticketPrice" class="price">â€”</div>
+
+			<div class="details">
+				<div class="detail-row"><span>Listing status</span><span id="listingStatus">â€”</span></div>
+				<div class="detail-row"><span>Current holder</span><span id="ticketOwner">â€”</span></div>
+				<div class="detail-row"><span>Issuer</span><span id="ticketIssuer">â€”</span></div>
+				<div class="detail-row"><span>Secondary seller</span><span id="secondarySeller">â€”</span></div>
+				<div class="detail-row"><span>Secondary price</span><span id="secondaryPrice">â€”</span></div>
+				<div class="detail-row"><span>Redeemed</span><span id="ticketRedeemed">â€”</span></div>
+			</div>
+
+			<div class="action-panel">
+				<h3>Ticket Actions</h3>
+				<p class="small-note">Transactions change the state of the deployed smart contract. Check the amount and network in MetaMask before confirming.</p>
+
+				<button id="buyPrimaryButton" hidden>Buy Ticket #1</button>
+				<button id="buySecondaryButton" hidden>Buy Resale Ticket</button>
+
+				<div id="resaleControls" hidden>
+					<p><label for="resalePrice"><strong>Resale price (DIDLab tokens)</strong></label></p>
+					<input id="resalePrice" type="number" min="0" step="any" placeholder="e.g. 0.02">
+					<button id="listResaleButton">List for Resale</button>
+				</div>
+
+				<button id="cancelListingButton" class="secondary-button" hidden>Cancel Resale Listing</button>
+				<p id="actionStatus" class="status">Connect MetaMask to use ticket actions.</p>
+                <h3>Transaction Evidence</h3>
+                <input id="verifyTxHash" type="text" placeholder="Transaction hash" style="width:100%;max-width:650px">
+                <button id="verifyTxButton" class="secondary-button">Verify Transaction</button>
+                <pre id="transactionEvidence" class="status"
+                     style="white-space:pre-wrap;overflow-wrap:anywhere">No transaction submitted yet.</pre>
+
+			</div>
+		</div>
+	</section>
+
+	<section>
+		<h2>About the Project</h2>
+		<p>Ticket buyers and sellers can have difficulty verifying whether tickets are authentic, who owns them, whether they have been transferred, and whether they have already been redeemed. This project uses blockchain records to make ticket ownership and marketplace activity independently verifiable.</p>
+		<p><strong>Team:</strong> Joey Contreras and Lupe Campos</p>
+		<p><a href="https://github.com/lc6cm/TeamGoo-BlockChainProject" target="_blank" rel="noopener noreferrer">View the GitHub repository</a></p>
+	</section>
+
+	<script>
+		"use strict";
+
+		const CONTRACT_ADDRESS = "0x98dEca57f98504fF09AcdBF1F2345ABF72EbA3c6";
+		const DIDLAB_CHAIN_ID = "0x3da55";
+		const DIDLAB_RPC = "https://eth.didlab.org";
+		const TOKEN_ID = 1;
+		const ZERO_ADDRESS = ethers.ZeroAddress;
+
+		const CONTRACT_ABI = [
+		"function ticketInfo(uint256 tokenId) view returns (address ticketOwner, address issuer, uint256 primaryPrice, bool primaryListed, address secondarySeller, uint256 secondaryPrice, bool redeemed)",
+		"function buyPrimaryTicket(uint256 tokenId) payable",
+		"function listTicket(uint256 tokenId, uint256 price)",
+		"function cancelListing(uint256 tokenId)",
+		"function buySecondaryTicket(uint256 tokenId) payable",
+"event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
+		];
+
+		document.getElementById("contractAddress").textContent = CONTRACT_ADDRESS;
+
+		let browserProvider = null;
+		let signer = null;
+		let ticketState = null;
+		let busy = false;
+		let readProvider = null;
+
+		const el = id => document.getElementById(id);
+
+		function setActionStatus(message) {
+		el("actionStatus").textContent = message;
+		}
+
+		function errorMessage(error) {
+		return error?.shortMessage || error?.reason || error?.message || String(error);
+		}
+
+		function isZero(address) {
+		return address.toLowerCase() === ZERO_ADDRESS.toLowerCase();
+		}
+
+		function clearWallet(message) {
+		signer = null;
+		browserProvider = null;
+		el("walletStatus").textContent = message;
+		updateActions();
+		}
+
+		async function checkNetwork() {
+		if (!window.ethereum) {
+		el("networkStatus").textContent =
+		"MetaMask not detected. Public ticket information remains available.";
+		return false;
+		}
+
+		try {
+		const chainId = await window.ethereum.request({ method: "eth_chainId" });
+		const correct = chainId.toLowerCase() === DIDLAB_CHAIN_ID;
+
+		el("networkStatus").textContent = correct
+		? "MetaMask is on DIDLab (chain ID 252501)."
+		: "Wrong network. Switch MetaMask to DIDLab (chain ID 252501).";
+
+		return correct;
+		} catch (error) {
+		el("networkStatus").textContent =
+		"Could not check network: " + errorMessage(error);
+		return false;
+		}
+		}
+
+		async function connectWallet() {
+		if (!window.ethereum) {
+		clearWallet("MetaMask was not detected. Open this page in a browser with MetaMask installed.");
+		await checkNetwork();
+		return;
+		}
+
+		el("connectWallet").disabled = true;
+		el("walletStatus").textContent = "Connecting to MetaMask...";
+
+		try {
+		// Initialize the provider before requesting a signer.
+		browserProvider = new ethers.BrowserProvider(window.ethereum);
+
+		const accounts = await window.ethereum.request({
+		method: "eth_requestAccounts"
+		});
+
+		if (!accounts || accounts.length === 0) {
+		throw new Error("No wallet account was selected.");
+		}
+
+		if (!(await checkNetwork())) {
+		signer = null;
+		el("walletStatus").textContent =
+		"Wallet detected, but the network is incorrect. Switch to DIDLab and reconnect.";
+		updateActions();
+		return;
+		}
+
+		// Recreate the provider after the wallet/network checks.
+		browserProvider = new ethers.BrowserProvider(window.ethereum);
+		signer = await browserProvider.getSigner();
+
+		const address = await signer.getAddress();
+		el("walletStatus").textContent = "Wallet connected: " + address;
+		setActionStatus("Wallet connected. Checking available ticket actions...");
+
+		await loadTicket();
+		} catch (error) {
+		clearWallet("Wallet connection failed: " + errorMessage(error));
+		setActionStatus("Could not connect wallet. Check MetaMask and try again.");
+		console.error("Wallet connection error:", error);
+		} finally {
+		el("connectWallet").disabled = false;
+		updateActions();
+		}
+		}
+
+		async function loadTicket() {
+		el("refreshTicket").disabled = true;
+		el("ticketStatus").textContent = "Reading ticket #1 from DIDLab...";
+
+		try {
+		// Public reads use the DIDLab RPC and do not require a wallet.
+		if (!readProvider) {
+		readProvider = new ethers.JsonRpcProvider(DIDLAB_RPC, 252501);
+		}
+
+		const contract = new ethers.Contract(
+		CONTRACT_ADDRESS,
+		CONTRACT_ABI,
+		readProvider
+		);
+
+		const result = await contract.ticketInfo(TOKEN_ID);
+
+		ticketState = {
+		owner: result[0],
+		issuer: result[1],
+		primaryPrice: result[2],
+		primaryListed: result[3],
+		secondarySeller: result[4],
+		secondaryPrice: result[5],
+		redeemed: result[6]
+		};
+
+		const t = ticketState;
+		const secondaryListed = !isZero(t.secondarySeller);
+		let label = "Not listed for sale";
+		let badge = "Not listed";
+		let available = false;
+
+		if (t.redeemed) {
+		label = "Redeemed";
+		badge = "Redeemed";
+		} else if (secondaryListed) {
+		label = "Available for resale";
+		badge = "For resale";
+		available = true;
+		} else if (t.primaryListed) {
+		label = "Available for primary sale";
+		badge = "For sale";
+		available = true;
+		}
+
+		el("listingStatus").textContent = label;
+		el("listingBadge").textContent = badge;
+		el("listingBadge").className = available ? "badge" : "badge inactive";
+
+		el("ticketPrice").textContent =
+		ethers.formatEther(secondaryListed ? t.secondaryPrice : t.primaryPrice) +
+		" DIDLab tokens" + (secondaryListed ? " (resale)" : "");
+
+		el("ticketOwner").textContent =
+		t.owner.toLowerCase() === CONTRACT_ADDRESS.toLowerCase()
+		? "Marketplace escrow"
+		: t.owner;
+
+		el("ticketIssuer").textContent = t.issuer;
+		el("secondarySeller").textContent =
+		secondaryListed ? t.secondarySeller : "None";
+		el("secondaryPrice").textContent =
+		secondaryListed
+		? ethers.formatEther(t.secondaryPrice) + " DIDLab tokens"
+		: "Not listed";
+		el("ticketRedeemed").textContent = t.redeemed ? "Yes" : "No";
+
+		el("ticketStatus").textContent =
+		"Success: ticket information read from DIDLab (chain 252501).";
+		} catch (error) {
+		ticketState = null;
+		el("ticketStatus").textContent =
+		"Could not read ticket data: " + errorMessage(error);
+		console.error("Ticket read error:", error);
+		} finally {
+		el("refreshTicket").disabled = false;
+		updateActions();
+		}
+		}
+
+		async function getWritableContract() {
+		if (!window.ethereum) {
+		throw new Error("MetaMask was not detected.");
+		}
+
+		// Rebuild the provider if missing; don't call getSigner on null.
+		if (!browserProvider) {
+		browserProvider = new ethers.BrowserProvider(window.ethereum);
+		}
+
+		if (!(await checkNetwork())) {
+		throw new Error("Switch MetaMask to DIDLab (chain ID 252501) first.");
+		}
+
+		// Request accounts only when the user initiates a transaction.
+		const accounts = await window.ethereum.request({
+		method: "eth_requestAccounts"
+		});
+
+		if (!accounts || accounts.length === 0) {
+		throw new Error("Connect a MetaMask account first.");
+		}
+
+		browserProvider = new ethers.BrowserProvider(window.ethereum);
+		signer = await browserProvider.getSigner();
+
+		const network = await browserProvider.getNetwork();
+		if (network.chainId !== 252501n) {
+		throw new Error("Wrong network. Switch MetaMask to DIDLab.");
+		}
+
+		el("walletStatus").textContent =
+		"Wallet connected: " + await signer.getAddress();
+
+		return new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+		}
+
+		async function updateActions() {
+		const t = ticketState;
+		let address = "";
+
+		if (signer) {
+		try {
+		address = (await signer.getAddress()).toLowerCase();
+		} catch (_) {
+		address = "";
+		}
+		}
+
+		const connected = Boolean(address);
+		const secondaryListed = Boolean(t && !isZero(t.secondarySeller));
+		const inEscrow = Boolean(
+		t && t.owner.toLowerCase() === CONTRACT_ADDRESS.toLowerCase()
+		);
+		const isOwner = Boolean(
+		t && address && t.owner.toLowerCase() === address
+		);
+		const isSeller = Boolean(
+		t && address && secondaryListed &&
+		t.secondarySeller.toLowerCase() === address
+		);
+
+		const canBuyPrimary = Boolean(
+		t && connected && !t.redeemed &&
+		t.primaryListed && inEscrow && !secondaryListed
+		);
+		const canBuySecondary = Boolean(
+		t && connected && !t.redeemed &&
+		secondaryListed && t.secondarySeller.toLowerCase() !== address
+		);
+		const canList = Boolean(
+		t && connected && !t.redeemed && isOwner &&
+		!secondaryListed && !inEscrow && !t.primaryListed
+		);
+		const canCancel = Boolean(
+		t && connected && !t.redeemed && isSeller
+		);
+
+		el("buyPrimaryButton").hidden = !canBuyPrimary;
+		el("buySecondaryButton").hidden = !canBuySecondary;
+		el("resaleControls").hidden = !canList;
+		el("cancelListingButton").hidden = !canCancel;
+
+		if (!connected) {
+		setActionStatus("Connect MetaMask on DIDLab to use ticket actions.");
+		} else if (!t) {
+		setActionStatus("Ticket data is unavailable. Refresh and try again.");
+		} else if (t.redeemed) {
+		setActionStatus("This ticket has been redeemed; purchase and resale actions are disabled.");
+		} else if (canBuyPrimary) {
+		setActionStatus("This wallet can purchase the primary listing.");
+		} else if (canBuySecondary) {
+		setActionStatus("This wallet can purchase the resale listing.");
+		} else if (canCancel) {
+		setActionStatus("You are the listed seller and can cancel the resale listing.");
+		} else if (canList) {
+		setActionStatus("This wallet owns the ticket and can list it for resale.");
+		} else if (inEscrow && t.primaryListed) {
+		setActionStatus("Ticket is available for primary sale. This wallet can purchase it.");
+		} else {
+		setActionStatus("No action is available for this wallet and ticket state.");
+		}
+		}
+
+
+function showTransactionEvidence(lines) {
+    el("transactionEvidence").textContent = lines.join("\n");
+}
+
+function transactionRejected(error) {
+    return error?.code === "ACTION_REJECTED" ||
+           error?.code === 4001 ||
+           error?.info?.error?.code === 4001;
+}
+
+async function runTransaction(label, action) {
+    if (busy) return;
+    busy = true;
+
+    const buttonIds = [
+        "buyPrimaryButton",
+        "buySecondaryButton",
+        "listResaleButton",
+        "cancelListingButton",
+        "refreshTicket"
+    ];
+
+    buttonIds.forEach(id => {
+        el(id).disabled = true;
+    });
+
+    let tx = null;
+
+    try {
+        const contract = await getWritableContract();
+
+        showTransactionEvidence([
+            "Outcome: AWAITING WALLET APPROVAL",
+            "Action: " + label,
+            "No transaction hash yet."
+        ]);
+
+        setActionStatus(label + ": confirm in MetaMask.");
+
+        tx = await action(contract);
+
+        showTransactionEvidence([
+            "Outcome: PENDING",
+            "Action: " + label,
+            "Transaction hash: " + tx.hash,
+            "Waiting for blockchain confirmation..."
+        ]);
+
+        const receipt = await tx.wait();
+
+        if (!receipt) {
+            throw new Error("Transaction receipt unavailable.");
+        }
+
+        showTransactionEvidence([
+            "Outcome: " +
+                (receipt.status === 1 ? "CONFIRMED" : "REVERTED ON-CHAIN"),
+            "Action: " + label,
+            "Transaction hash: " + tx.hash,
+            "Block number: " + receipt.blockNumber,
+            "Gas used: " + receipt.gasUsed.toString(),
+            "Receipt status: " + receipt.status,
+            "From: " + receipt.from,
+            "To: " + receipt.to
+        ]);
+
+        if (receipt.status !== 1) {
+            setActionStatus(label + " reverted on-chain.");
+            await loadTicket();
+            return;
+        }
+
+        await loadTicket();
+
+        setActionStatus(
+            label + " confirmed! Ticket information refreshed from blockchain."
+        );
+
+    } catch (error) {
+        const receipt =
+            error?.receipt ||
+            error?.info?.receipt ||
+            null;
+
+        const hash =
+            tx?.hash ||
+            error?.transactionHash ||
+            receipt?.hash ||
+            null;
+
+        if (receipt && receipt.status === 0) {
+            showTransactionEvidence([
+                "Outcome: REVERTED ON-CHAIN",
+                "Action: " + label,
+                "Transaction hash: " + (hash || "Unavailable"),
+                "Block number: " + receipt.blockNumber,
+                "Gas used: " + receipt.gasUsed.toString(),
+                "Receipt status: 0",
+                "From: " + receipt.from,
+                "To: " + receipt.to
+            ]);
+
+            setActionStatus(label + " reverted on-chain.");
+            await loadTicket();
+
+        } else if (transactionRejected(error)) {
+            showTransactionEvidence([
+                "Outcome: WALLET REJECTED",
+                "Action: " + label,
+                "Transaction hash: None",
+                "No transaction submitted to blockchain."
+            ]);
+
+            setActionStatus("Transaction rejected in MetaMask.");
+
+        } else {
+            showTransactionEvidence([
+                "Outcome: ERROR",
+                "Action: " + label,
+                "Transaction hash: " + (hash || "None"),
+                "Error: " + errorMessage(error)
+            ]);
+
+            setActionStatus(
+                label + " failed: " + errorMessage(error)
+            );
+        }
+
+        console.error(label + " error:", error);
+
+    } finally {
+        busy = false;
+
+        buttonIds.forEach(id => {
+            el(id).disabled = false;
+        });
+
+        await updateActions();
+    }
+}
+
+el("buyPrimaryButton").addEventListener("click", () => {
+		if (!ticketState) return;
+		const price = ticketState.primaryPrice;
+
+		if (!confirm(
+		"Buy Ticket #1 for " + ethers.formatEther(price) +
+		" DIDLab tokens? Review the transaction in MetaMask before confirming."
+		)) return;
+
+		runTransaction("Primary purchase", contract =>
+		contract.buyPrimaryTicket(TOKEN_ID, { value: price })
+		);
+		});
+
+		el("buySecondaryButton").addEventListener("click", () => {
+		if (!ticketState) return;
+		const price = ticketState.secondaryPrice;
+
+		if (!confirm(
+		"Buy this resale ticket for " + ethers.formatEther(price) +
+		" DIDLab tokens? Review the transaction in MetaMask before confirming."
+		)) return;
+
+		runTransaction("Resale purchase", contract =>
+		contract.buySecondaryTicket(TOKEN_ID, { value: price })
+		);
+		});
+
+		el("listResaleButton").addEventListener("click", () => {
+		const value = el("resalePrice").value.trim();
+
+		try {
+		if (!value || !Number.isFinite(Number(value)) || Number(value) <= 0) {
+		throw new Error("Enter a resale price greater than zero.");
+		}
+
+		const price = ethers.parseEther(value);
+		if (price <= 0n) throw new Error("Enter a resale price greater than zero.");
+
+		if (!confirm(
+		"List Ticket #1 for " + value +
+		" DIDLab tokens? The ticket will move into marketplace escrow."
+		)) return;
+
+		runTransaction("Resale listing", contract =>
+		contract.listTicket(TOKEN_ID, price)
+		);
+		} catch (error) {
+		setActionStatus("Invalid resale price: " + errorMessage(error));
+		}
+		});
+
+		el("cancelListingButton").addEventListener("click", () => {
+		if (!confirm("Cancel your resale listing for Ticket #1?")) return;
+		runTransaction("Cancel listing", contract =>
+		contract.cancelListing(TOKEN_ID)
+		);
+		});
+
+		el("connectWallet").addEventListener("click", connectWallet);
+		el("refreshTicket").addEventListener("click", loadTicket);
+
+		if (window.ethereum && typeof window.ethereum.on === "function") {
+		window.ethereum.on("chainChanged", async () => {
+		clearWallet("Network changed. Click Connect MetaMask to reconnect.");
+		await checkNetwork();
+		await loadTicket();
+		});
+
+		window.ethereum.on("accountsChanged", async accounts => {
+		clearWallet(
+		accounts && accounts.length
+		? "Wallet account changed. Click Connect MetaMask to reconnect."
+		: "Wallet disconnected."
+		);
+		await loadTicket();
+		});
+		}
+
+
+// Watch on-chain Transfer events for Ticket #1.
+async function watchTicketTransfers() {
+    try {
+        if (!readProvider) {
+            readProvider = new ethers.JsonRpcProvider(DIDLAB_RPC, 252501);
+        }
+
+        const contract = new ethers.Contract(
+            CONTRACT_ADDRESS, CONTRACT_ABI, readProvider
+        );
+
+        await contract.on("Transfer", async (from, to, tokenId) => {
+            if (tokenId === BigInt(TOKEN_ID)) {
+                console.log("Transfer event detected for Ticket #1");
+                await loadTicket();
+            }
+        });
+
+        console.log("Watching Transfer events for Ticket #1");
+    } catch (error) {
+        console.error("Event listener error:", error);
+    }
+}
+
+watchTicketTransfers();
+
+
+// Retrieve an existing transaction receipt directly from DIDLab.
+el("verifyTxButton").addEventListener("click", async () => {
+    const hash = el("verifyTxHash").value.trim();
+
+    if (!ethers.isHexString(hash, 32)) {
+        setActionStatus("Enter a valid transaction hash.");
+        return;
+    }
+
+    el("verifyTxButton").disabled = true;
+    showTransactionEvidence(["Checking transaction on DIDLab...", hash]);
+
+    try {
+        if (!readProvider) {
+            readProvider = new ethers.JsonRpcProvider(DIDLAB_RPC, 252501);
+        }
+
+        const receipt = await readProvider.getTransactionReceipt(hash);
+
+        if (!receipt) {
+            showTransactionEvidence([
+                "Outcome: PENDING OR NOT FOUND",
+                "Transaction hash: " + hash,
+                "No confirmed receipt available."
+            ]);
+            return;
+        }
+
+        showTransactionEvidence([
+            "Outcome: " + (receipt.status === 0 ? "REVERTED ON-CHAIN" : "CONFIRMED"),
+            "Transaction hash: " + receipt.hash,
+            "Block number: " + receipt.blockNumber,
+            "Gas used: " + receipt.gasUsed.toString(),
+            "Receipt status: " + receipt.status,
+            "From: " + receipt.from,
+            "To: " + receipt.to,
+            "Contract state changed: " +
+                (receipt.status === 0 ? "No (reverted)" : "Check transaction")
+        ]);
+
+        await loadTicket();
+    } catch (error) {
+        showTransactionEvidence(["Verification failed: " + errorMessage(error)]);
+    } finally {
+        el("verifyTxButton").disabled = false;
+    }
+});
+
+// Initial public read; the page does not require a connected wallet.
+		checkNetwork();
+		loadTicket();
+	</script>
+</body>
+</html>

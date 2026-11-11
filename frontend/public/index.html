@@ -213,6 +213,98 @@
 		<p id="networkStatus" class="status">Checking wallet network...</p>
 	</section>
 
+
+	<section id="adminDashboard" hidden>
+		<h2>Service Provider — Admin Dashboard</h2>
+
+		<p class="muted">
+			Manage organizations authorized to issue tickets
+			through TeamGoo.
+		</p>
+
+		<p><strong>Connected administrator:</strong></p>
+		<p id="adminAddress" class="status">Not connected</p>
+
+		<p><strong>Issuer wallet address:</strong></p>
+
+		<input
+			id="issuerAddress"
+			type="text"
+			value="0x4F4c46350c75caAA2F88a37b7b83b8ec47949fA5"
+			style="width:100%;max-width:480px"
+		>
+
+		<p id="issuerStatus" class="status">
+			Issuer authorization not checked.
+		</p>
+
+		<button id="authorizeIssuerButton">
+			Authorize Issuer
+		</button>
+
+		<button
+			id="revokeIssuerButton"
+			class="secondary-button">
+			Revoke Issuer
+		</button>
+
+		<p id="adminActionStatus" class="status"></p>
+	</section>
+
+
+<section id="issuerDashboard" hidden>
+    <h2>Organization — Issuer Dashboard</h2>
+
+    <p class="muted">
+        Authorized organizations can create new tickets
+        and list them for primary sale.
+    </p>
+
+    <p><strong>Connected issuer:</strong></p>
+    <p id="connectedIssuerAddress" class="status">Not connected</p>
+
+    <p><strong>Authorization status:</strong></p>
+    <p id="issuerAuthorizationStatus" class="status">
+        Checking authorization...
+    </p>
+
+    <p>
+        <label for="mintTokenId">
+            <strong>New ticket ID:</strong>
+        </label>
+    </p>
+    <input
+        id="mintTokenId"
+        type="number"
+        min="1"
+        step="1"
+        placeholder="e.g. 2"
+    >
+
+    <p>
+        <label for="mintPrice">
+            <strong>Primary ticket price (TRUST):</strong>
+        </label>
+    </p>
+    <input
+        id="mintPrice"
+        type="number"
+        min="0"
+        step="any"
+        placeholder="e.g. 0.01"
+    >
+
+    <p>
+        <button id="mintTicketButton">Mint Ticket</button>
+    </p>
+
+    <p id="mintStatus" class="status">
+        Enter a ticket ID and price to mint a ticket.
+    </p>
+</section>
+
+
+
 	<section>
 		<h2>Ticket Marketplace</h2>
 		<p class="muted">Ticket information is retrieved from the deployed smart contract on DIDLab.</p>
@@ -281,14 +373,22 @@
 		const TOKEN_ID = 1;
 		const ZERO_ADDRESS = ethers.ZeroAddress;
 
-		const CONTRACT_ABI = [
+		
+	const CONTRACT_ABI = [
+		"function owner() view returns (address)",
+		"function authorizedIssuers(address issuer) view returns (bool)",
+		"function setIssuer(address issuer, bool authorized)",
+		"function mintTicket(uint256 tokenId, uint256 price)",
+
 		"function ticketInfo(uint256 tokenId) view returns (address ticketOwner, address issuer, uint256 primaryPrice, bool primaryListed, address secondarySeller, uint256 secondaryPrice, bool redeemed)",
 		"function buyPrimaryTicket(uint256 tokenId) payable",
 		"function listTicket(uint256 tokenId, uint256 price)",
 		"function cancelListing(uint256 tokenId)",
 		"function buySecondaryTicket(uint256 tokenId) payable",
-"event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
-		];
+
+		"event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
+	];
+
 
 		document.getElementById("contractAddress").textContent = CONTRACT_ADDRESS;
 
@@ -316,6 +416,8 @@
 		signer = null;
 		browserProvider = null;
 		el("walletStatus").textContent = message;
+		el("adminDashboard").hidden = true;
+		el("issuerDashboard").hidden = true;
 		updateActions();
 		}
 
@@ -381,6 +483,9 @@
 		setActionStatus("Wallet connected. Checking available ticket actions...");
 
 		await loadTicket();
+		await updateAdminDashboard();
+		await updateIssuerDashboard();
+
 		} catch (error) {
 		clearWallet("Wallet connection failed: " + errorMessage(error));
 		setActionStatus("Could not connect wallet. Check MetaMask and try again.");
@@ -390,6 +495,115 @@
 		updateActions();
 		}
 		}
+
+
+	async function updateAdminDashboard() {
+		const dashboard = el("adminDashboard");
+
+		dashboard.hidden = true;
+
+		if (!signer || !(await checkNetwork())) {
+			return;
+		}
+
+		try {
+			if (!readProvider) {
+				readProvider = new ethers.JsonRpcProvider(
+					DIDLAB_RPC, 252501
+				);
+			}
+
+			const contract = new ethers.Contract(
+				CONTRACT_ADDRESS,
+				CONTRACT_ABI,
+				readProvider
+			);
+
+			const owner = await contract.owner();
+			const connectedAddress = await signer.getAddress();
+
+			if (owner.toLowerCase() !== connectedAddress.toLowerCase()) {
+				return;
+			}
+
+			dashboard.hidden = false;
+			el("adminAddress").textContent = connectedAddress;
+
+			const issuerAddress = el("issuerAddress").value.trim();
+
+			if (!ethers.isAddress(issuerAddress)) {
+				el("issuerStatus").textContent =
+					"Enter a valid issuer wallet address.";
+				return;
+			}
+
+			const authorized = await contract.authorizedIssuers(
+				issuerAddress
+			);
+
+			el("issuerStatus").textContent = authorized
+				? "Status: Authorized issuer"
+				: "Status: Not authorized";
+
+			el("authorizeIssuerButton").disabled = authorized;
+			el("revokeIssuerButton").disabled = !authorized;
+
+		} catch (error) {
+			el("adminActionStatus").textContent =
+				"Admin check failed: " + errorMessage(error);
+			console.error(error);
+		}
+}
+
+
+
+async function updateIssuerDashboard() {
+    const dashboard = el("issuerDashboard");
+    dashboard.hidden = true;
+
+    if (!signer || !(await checkNetwork())) {
+        return;
+    }
+
+    try {
+        if (!readProvider) {
+            readProvider = new ethers.JsonRpcProvider(
+                DIDLAB_RPC, 252501
+            );
+        }
+
+        const contract = new ethers.Contract(
+            CONTRACT_ADDRESS,
+            CONTRACT_ABI,
+            readProvider
+        );
+
+        const connectedAddress = await signer.getAddress();
+
+        const authorized = await contract.authorizedIssuers(
+            connectedAddress
+        );
+
+        if (!authorized) {
+            return;
+        }
+
+        dashboard.hidden = false;
+
+        el("connectedIssuerAddress").textContent =
+            connectedAddress;
+
+        el("issuerAuthorizationStatus").textContent =
+            "Status: Authorized issuer";
+
+    } catch (error) {
+        el("mintStatus").textContent =
+            "Issuer check failed: " + errorMessage(error);
+
+        console.error("Issuer dashboard error:", error);
+    }
+}
+
 
 		async function loadTicket() {
 		el("refreshTicket").disabled = true;
@@ -718,6 +932,169 @@ async function runTransaction(label, action) {
         await updateActions();
     }
 }
+
+
+async function mintNewTicket() {
+    if (busy) return;
+
+    const tokenIdInput = el("mintTokenId").value.trim();
+    const priceInput = el("mintPrice").value.trim();
+
+    try {
+        if (!/^[1-9]\d*$/.test(tokenIdInput)) {
+            throw new Error("Enter a positive whole-number ticket ID.");
+        }
+
+        const tokenId = BigInt(tokenIdInput);
+
+        if (!priceInput || !Number.isFinite(Number(priceInput)) ||
+            Number(priceInput) <= 0) {
+            throw new Error("Enter a ticket price greater than zero.");
+        }
+
+        const price = ethers.parseEther(priceInput);
+
+        if (price <= 0n) {
+            throw new Error("Ticket price must be greater than zero.");
+        }
+
+        if (!confirm(
+            "Mint Ticket #" + tokenId +
+            " for " + priceInput +
+            " TRUST? This will create a new primary listing."
+        )) {
+            return;
+        }
+
+        busy = true;
+        el("mintTicketButton").disabled = true;
+
+        const contract = await getWritableContract();
+        const connectedAddress = await signer.getAddress();
+
+        const authorized = await contract.authorizedIssuers(
+            connectedAddress
+        );
+
+        if (!authorized) {
+            throw new Error("This wallet is not an authorized issuer.");
+        }
+
+        el("mintStatus").textContent =
+            "Confirm the mint transaction in MetaMask.";
+
+        const tx = await contract.mintTicket(tokenId, price);
+
+        el("mintStatus").textContent =
+            "Mint transaction pending: " + tx.hash;
+
+        const receipt = await tx.wait();
+
+        if (!receipt || receipt.status !== 1) {
+            throw new Error("Mint transaction was not confirmed.");
+        }
+
+        el("mintStatus").textContent =
+            "Ticket #" + tokenId +
+            " minted successfully! Transaction: " + tx.hash;
+
+        el("mintTokenId").value = "";
+        el("mintPrice").value = "";
+
+    } catch (error) {
+        el("mintStatus").textContent =
+            transactionRejected(error)
+                ? "Mint transaction rejected in MetaMask."
+                : "Mint failed: " + errorMessage(error);
+
+        console.error("Mint ticket error:", error);
+
+    } finally {
+        busy = false;
+        el("mintTicketButton").disabled = false;
+    }
+}
+
+el("mintTicketButton").addEventListener("click", mintNewTicket);
+
+
+
+async function changeIssuerAuthorization(authorized) {
+    if (busy) return;
+
+    const issuerAddress = el("issuerAddress").value.trim();
+
+    if (!ethers.isAddress(issuerAddress)) {
+        el("adminActionStatus").textContent =
+            "Enter a valid issuer wallet address.";
+        return;
+    }
+
+    const action = authorized ? "Authorize" : "Revoke";
+
+    if (!confirm(action + " issuer " + issuerAddress + "?")) {
+        return;
+    }
+
+    busy = true;
+    el("authorizeIssuerButton").disabled = true;
+    el("revokeIssuerButton").disabled = true;
+
+    let tx = null;
+
+    try {
+        const contract = await getWritableContract();
+
+        const owner = await contract.owner();
+        const connectedAddress = await signer.getAddress();
+
+        if (owner.toLowerCase() !== connectedAddress.toLowerCase()) {
+            throw new Error("Only the contract administrator can manage issuers.");
+        }
+
+        el("adminActionStatus").textContent =
+            "Confirm " + action.toLowerCase() + " transaction in MetaMask.";
+
+        tx = await contract.setIssuer(issuerAddress, authorized);
+
+        el("adminActionStatus").textContent =
+            "Transaction pending: " + tx.hash;
+
+        const receipt = await tx.wait();
+
+        if (!receipt || receipt.status !== 1) {
+            throw new Error("Transaction was not confirmed successfully.");
+        }
+
+        el("adminActionStatus").textContent =
+            action + " successful! Transaction: " + tx.hash;
+
+    } catch (error) {
+        el("adminActionStatus").textContent =
+            transactionRejected(error)
+                ? "Transaction rejected in MetaMask."
+                : action + " failed: " + errorMessage(error);
+
+        console.error("Issuer authorization error:", error);
+
+    } finally {
+        busy = false;
+        await updateAdminDashboard();
+    }
+}
+
+el("authorizeIssuerButton").addEventListener("click", () => {
+    changeIssuerAuthorization(true);
+});
+
+el("revokeIssuerButton").addEventListener("click", () => {
+    changeIssuerAuthorization(false);
+});
+
+el("issuerAddress").addEventListener("change", () => {
+    updateAdminDashboard();
+});
+
 
 el("buyPrimaryButton").addEventListener("click", () => {
 		if (!ticketState) return;
