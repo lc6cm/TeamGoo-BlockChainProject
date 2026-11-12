@@ -34,6 +34,16 @@
 - Help preparing Checkpoint 1, 2, and 3 evidence Markdown files.
 - Help updating the cumulative checkpoint report and preparing it for PDF export.
 - Help preparing the Checkpoint 3 security, privacy, performance, and testing documentation.
+- Help implementing an Admin Dashboard for managing authorized ticket issuers.
+- Help restricting administrative controls to the smart contract owner.
+- Help implementing an Issuer Dashboard for authorized organizations.
+- Help connecting the dashboards to `owner()`, `authorizedIssuers()`, `setIssuer()`, and `mintTicket()`.
+- Help implementing ticket minting directly through MetaMask and the frontend.
+- Help validating ticket IDs and primary prices in TRUST.
+- Help troubleshooting why newly minted tickets were not appearing in the marketplace.
+- Guidance resolving GitHub push conflicts using Git rebase.
+- Help updating the checkpoint report with Admin Dashboard and Issuer Dashboard screenshots.
+- Help identifying remaining frontend features, including multiple-ticket display, event information, and an About page.
 
 ## What It Produced
 
@@ -63,6 +73,16 @@ ChatGPT provided:
 - Suggested content for `CP1_TeamGoo_evidence.md`, `CP2_TeamGoo_evidence.md`, and `CP3_TeamGoo_evidence.md`.
 - Updated checkpoint report content covering security, privacy, performance, and additional development.
 - Instructions for converting the checkpoint report from Markdown to PDF.
+- HTML and JavaScript suggestions for the Admin Dashboard and Issuer Dashboard.
+- Code for checking the connected wallet against the contract owner and authorized issuer mappings.
+- Code for authorizing and revoking issuer wallets through MetaMask.
+- JavaScript for minting tickets using ethers.js and converting TRUST prices to wei.
+- Input validation for ticket IDs and prices.
+- Transaction handling that waits for blockchain confirmation before reporting successful ticket minting.
+- Explanations of how newly minted tickets are stored in marketplace escrow and listed for primary sale.
+- Guidance identifying the hardcoded `TOKEN_ID = 1` limitation in the marketplace.
+- PowerShell and Git commands for committing, rebasing, and pushing changes.
+- Markdown documentation describing the dashboards, successful minting, screenshots, and remaining work.
 
 ## How We Verified It
 
@@ -96,6 +116,39 @@ We reviewed AI-generated suggestions against the assignment requirements and our
 - Tested wallet rejection and confirmed that no transaction was submitted.
 - Verified an actual on-chain reverted transaction with receipt status `0` and no contract state change.
 - Tested the frontend locally using `npm start` and confirmed that ticket information loaded successfully.
+
+### Admin Dashboard
+
+- Connected the administrator wallet to DIDLab.
+- Confirmed that the Admin Dashboard appeared for the contract owner.
+- Implemented controls for checking issuer authorization.
+- Successfully authorized two issuer wallets through the deployed contract.
+- Confirmed that issuer authorization status was displayed in the frontend.
+
+**Authorized issuer wallets:**
+
+- `0x4F4c46350c75caAA2F88a37b7b83b8ec47949fA5`
+- `0xD40963bf3d072203B607387339774c90730c1939`
+
+The dashboard uses the contract's authorization functions rather than relying only on frontend controls.
+
+### Issuer Dashboard
+
+- Connected an authorized issuer wallet through MetaMask.
+- Confirmed that the Issuer Dashboard appeared for the authorized wallet.
+- Confirmed the authorization status showed "Authorized issuer."
+- Entered Ticket ID `2` and a primary price of `0.01` TRUST.
+- Submitted the minting transaction through MetaMask.
+- Confirmed the frontend reported "Ticket #2 minted successfully!"
+
+**Successful Ticket #2 minting:**
+
+- Ticket ID: `2`
+- Issuer: `0xD40963bf3d072203B607387339774c90730c1939`
+- Primary price: `0.01` TRUST
+- Transaction hash: `0xd7c82b2834f4dac49e0632e666a8d4d93ae01b0b3023de631705f7015c58ea46`
+
+This demonstrated that an authorized organization could mint a ticket directly through the website without using the Hardhat console.
 
 ### Encryption and IPFS
 
@@ -192,8 +245,12 @@ The listing and purchase signatures were confirmed against the ABI, but their ev
 - Reviewed the cumulative checkpoint report for outdated information and formatting problems.
 - Prepared separate Markdown evidence files for Checkpoints 1, 2, and 3.
 - Documented transaction hashes, block numbers, gas usage, test results, and security evidence.
-- Removed screenshot references from the report at the team's request.
 - Prepared the checkpoint report for conversion to PDF.
+- Updated the checkpoint report with Admin Dashboard and Issuer Dashboard descriptions.
+- Added screenshot references using the relative paths `images/Admin_Dashboard.png` and `images/Issuer_Dashboard.png`.
+- Committed the frontend dashboard changes.
+- Resolved a GitHub push conflict using `git pull --rebase origin main`.
+- Successfully pushed commit `2ce074d` to the `main` branch.
 
 ## What It Got Wrong
 
@@ -219,7 +276,11 @@ The AI initially described some transaction evidence without complete receipt me
 
 Some report sections contained outdated checkpoint wording and test counts. These were updated to reflect the current implementation and 31 passing tests.
 
-The AI suggested adding screenshot references to the report, but the team chose to submit a text-based report without screenshots.
+The team initially prepared a text-based checkpoint report but later added Admin Dashboard and Issuer Dashboard screenshots to document the new frontend functionality.
+
+The AI initially suggested a screenshot path without confirming the report's directory. We clarified that image paths must be relative to the location of `CHECKPOINT_REPORT.md`.
+
+The AI identified that the frontend currently uses a hardcoded `TOKEN_ID = 1`, meaning Ticket #2 does not automatically appear in the marketplace despite successful minting. Dynamic ticket display remains unfinished.
 
 We verified important results using actual contract calls, transaction receipts, file hashes, and automated tests rather than relying only on AI explanations.
 
@@ -230,6 +291,12 @@ AI was used as a development and learning assistant for explanations, code sugge
 The team reviewed the suggestions, executed the commands, tested the implementation, and verified blockchain results before using them as project evidence.
 
 For Checkpoint 3, AI also helped with security testing, performance measurements, transaction receipt analysis, event signature verification, encrypted IPFS records, role-based access control, privacy analysis, and documentation.
+
+Additional AI assistance was used to implement administrator and issuer workflows, integrate ticket minting into the frontend, troubleshoot GitHub conflicts, and update the checkpoint report.
+
+The team verified the Admin Dashboard and Issuer Dashboard using connected MetaMask wallets and confirmed successful ticket minting through DIDLab.
+
+The remaining frontend work includes displaying multiple tickets, adding event information, creating an About page, implementing redemption controls, and integrating registry verification.
 
 AI-generated code and explanations were not treated as proof of correctness. Contract behavior was checked through automated tests, live DIDLab transactions, and direct state verification.
 

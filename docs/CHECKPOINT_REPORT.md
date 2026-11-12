@@ -411,6 +411,88 @@ These governance safeguards are recommendations and are not currently implemente
 
 This additional work extends the existing TeamGoo Ticket Marketplace with encrypted off-chain records, on-chain integrity anchoring, independent verification, role-based permissions, and automated security testing.
 
+## 18. Additional Progress — Admin and Issuer Dashboards
+
+The following development was completed after the previous checkpoint work. These improvements introduce role-based dashboards for marketplace administration and ticket issuance.
+
+### Admin Dashboard
+
+Implemented an Admin Dashboard that is visible only when the connected MetaMask wallet matches the deployed TicketMarketplace contract owner.
+
+The dashboard allows the administrator to:
+
+- Enter an organization's wallet address.
+- Check whether the wallet is an authorized ticket issuer.
+- Authorize an organization to issue tickets.
+- Revoke an organization's issuing permissions.
+- View transaction status and confirmation results.
+
+The frontend interacts with the smart contract's `owner()`, `authorizedIssuers()`, and `setIssuer()` functions.
+
+Two issuer wallets were successfully authorized on DIDLab.
+
+**Admin Dashboard Screenshot**
+
+![Admin Dashboard](images/Admin_Dashboard.png)
+
+### Issuer Dashboard
+
+Implemented an Issuer Dashboard that is displayed only when the connected wallet is authorized to issue tickets.
+
+The dashboard allows authorized organizations to:
+
+- Connect their MetaMask wallet.
+- Verify their issuer authorization status.
+- Enter a unique ticket ID.
+- Set a primary ticket price in TRUST.
+- Mint a new ticket through the deployed smart contract.
+- View transaction confirmation and transaction hashes.
+
+The frontend calls `mintTicket(uint256 tokenId, uint256 price)` and converts the entered TRUST amount into wei using ethers.js.
+
+Newly minted tickets are automatically placed into marketplace escrow and listed for primary sale.
+
+**Issuer Dashboard Screenshot**
+
+![Issuer Dashboard](images/Issuer_Dashboard.png)
+
+### Successful Ticket Minting
+
+Successfully tested ticket creation using an authorized issuer wallet.
+
+- **Ticket ID:** 2
+- **Issuer:** `0xD40963bf3d072203B607387339774c90730c1939`
+- **Primary price:** 0.01 TRUST
+- **Transaction:** `0xd7c82b2834f4dac49e0632e666a8d4d93ae01b0b3023de631705f7015c58ea46`
+- **Frontend result:** Ticket #2 minted successfully.
+
+The successful transaction demonstrates that an authorized organization can create a ticket directly through the website rather than relying on the Hardhat console.
+
+### Current Frontend Limitation
+
+Although Ticket #2 was minted successfully, the marketplace currently displays only Ticket #1.
+
+The frontend uses a hardcoded `TOKEN_ID = 1`, so newly created tickets are not automatically displayed in the marketplace.
+
+This is a frontend limitation rather than a smart contract minting failure.
+
+### Remaining Development
+
+The following features are planned:
+
+1. **Multiple-ticket marketplace:** Display newly minted tickets and allow users to browse tickets from different organizations.
+2. **Event information:** Add event names, dates, times, venues, descriptions, and other relevant ticket details.
+3. **About page:** Create a dedicated page explaining TeamGoo, its purpose, blockchain verification, and the development team.
+4. **Buyer experience:** Allow buyers to browse available tickets and complete primary purchases using their own wallets.
+5. **Resale integration:** Ensure resale listings, purchases, and cancellations work for dynamically selected tickets.
+6. **Redemption interface:** Add authorized event-operator controls for redeeming tickets and displaying redemption status.
+7. **Registry integration:** Add frontend controls for encrypted ticket-record anchoring and verification.
+8. **Testing and documentation:** Complete end-to-end testing with multiple wallets, update automated tests where necessary, and collect transaction evidence.
+
+### Repository Update
+
+The latest frontend and contract changes were committed and pushed to the GitHub `main` branch.
+
 Contribution Summary
 
 Joey: Smart contract development, DIDLab deployment, encryption and IPFS testing, wallet permission testing, automated security tests, blockchain verification, and evidence collection.
