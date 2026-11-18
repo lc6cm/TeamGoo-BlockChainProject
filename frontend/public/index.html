@@ -982,6 +982,7 @@ clearWallet = function (message) {
 const CONTRACT_ABI = [
     "function owner() view returns (address)",
     "function authorizedIssuers(address issuer) view returns (bool)",
+"function authorizedOperators(address operator) view returns (bool)",
     "function setIssuer(address issuer, bool authorized)",
     "function setOperator(address operator, bool authorized)",
     "function redeemTicket(uint256 tokenId)",
