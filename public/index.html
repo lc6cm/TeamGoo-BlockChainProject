@@ -1,4 +1,4 @@
-﻿
+
 
 <!DOCTYPE html>
 <html lang="en">
@@ -413,7 +413,7 @@ clearWallet = function (message) {
         #myTicketsContainer > .ticket-card, #eventsContainer > .ticket-card { border-color: #e2e8f0; }
         @media (max-width: 600px) { header h1 { font-size: 1.5rem; } section { padding: 16px; } .wallet-layout { align-items: flex-start; } }
 
-	
+
         /* Issuer dashboard */
         .issuer-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
         .issuer-heading h2 { margin: 0; }
@@ -726,8 +726,8 @@ clearWallet = function (message) {
             <label for="bulkCount">Number of tickets (1–10)
                 <input id="bulkCount" type="number" min="1" max="10" step="1" value="1" required>
             </label>
-            <label for="bulkPrice">Price per ticket (TRUST)
-                <input id="bulkPrice" type="number" min="0" step="any" placeholder="e.g. 0.01" required>
+            <label for="bulkPrice">Price per ticket (USD)
+                <input id="bulkPrice" type="number" min="0" step="any" placeholder="e.g. 25.00" required>
             </label>
         </div>
         <p class="small-note">Each ticket requires its own MetaMask approval and blockchain transaction.</p>
@@ -751,7 +751,7 @@ clearWallet = function (message) {
         <button id="redeemAdmissionTicketButton" type="button" disabled>Redeem Ticket with MetaMask</button>
         <p id="redemptionTransactionStatus" class="status" aria-live="polite">No ticket selected for redemption.</p>
     </div>
-    
+
 </section>
 
 
@@ -818,8 +818,8 @@ clearWallet = function (message) {
 				<button id="buySecondaryButton" hidden>Buy Resale Ticket</button>
 
 				<div id="resaleControls" hidden>
-					<p><label for="resalePrice"><strong>Resale price (DIDLab tokens)</strong></label></p>
-					<input id="resalePrice" type="number" min="0" step="any" placeholder="e.g. 0.02">
+					<p><label for="resalePrice"><strong>Resale price (USD)</strong></label></p>
+<input id="resalePrice" type="number" min="0.01" step="0.01" placeholder="e.g. 35.00">
 					<button id="listResaleButton">List for Resale</button>
 				</div>
 
@@ -843,7 +843,7 @@ clearWallet = function (message) {
         </details>
     </section>
 
-	
+
 </main>
 
 <section id="aboutProject" hidden>
@@ -977,8 +977,21 @@ clearWallet = function (message) {
 		const TOKEN_ID = 1;
 		const ZERO_ADDRESS = ethers.ZeroAddress;
 
-		
-	
+// TeamGoo fixed demonstration exchange rate:
+// 0.01 TRUST = $10 USD
+// 1 TRUST = $1,000 USD
+
+function usdToTrustWei(usd) {
+    const cents = ethers.parseUnits(String(usd), 2);
+    return cents * 10n ** 13n;
+}
+
+function trustWeiToUsd(wei) {
+    const cents = BigInt(wei) / (10n ** 13n);
+    return "$" + ethers.formatUnits(cents, 2);
+}
+
+
 const CONTRACT_ABI = [
     "function owner() view returns (address)",
     "function authorizedIssuers(address issuer) view returns (bool)",
@@ -1247,7 +1260,7 @@ async function loadEventTickets() {
             ? event.ticketIds
             : [];
 
-        
+
 let available = [];
 let failed = 0;
 
@@ -1434,7 +1447,7 @@ countElement.textContent =
 
                 ticketList.appendChild(message);
             }
-	
+
 		const ticketGrid = document.createElement("div");
 ticketGrid.className = "event-ticket-grid";
 ticketList.appendChild(ticketGrid);
@@ -1458,9 +1471,7 @@ ticketList.appendChild(ticketGrid);
 
                 const price = document.createElement("p");
 
-                price.textContent =
-                    ethers.formatEther(ticket.price) +
-                    " TRUST";
+                price.textContent = trustWeiToUsd(ticket.price);
 
                 const button = document.createElement("button");
 
@@ -1480,13 +1491,13 @@ ticketList.appendChild(ticketGrid);
                     }
 
                     if (!confirm(
-                        "Buy Ticket #" + ticket.id +
-                        " for " +
-                        ethers.formatEther(ticket.price) +
-                        " TRUST? Review the transaction in MetaMask."
-                    )) {
-                        return;
-                    }
+    "Buy Ticket #" + ticket.id +
+    " for " +
+    trustWeiToUsd(ticket.price) +
+    "? Payment will be made in TRUST through MetaMask."
+)) {
+    return;
+}
 
                     purchaseStatus.textContent =
                         "Waiting for MetaMask...";
@@ -1707,12 +1718,13 @@ if (!isOwner && !isSeller) {
                 const details = document.createElement("p");
                 details.textContent = "Ticket #" + ticketId;
 
-                const status = document.createElement("p");
+               const status = document.createElement("p");
 status.textContent = ticket[6]
     ? "Redeemed"
     : isSeller
-        ? "Listed for resale: " + ethers.formatEther(ticket[5]) + " TRUST"
+        ? "Listed for resale: " + trustWeiToUsd(ticket[5])
         : "Owned by you";
+
 
 card.append(title, details, status);
 
@@ -1818,7 +1830,7 @@ resaleButton.className = "secondary-button";
 
 resaleButton.addEventListener("click", async () => {
     const priceInput = prompt(
-        "Enter the resale price for Ticket #" + ticketId + " in TRUST:"
+        "Enter the resale price for Ticket #" + ticketId + " in USD:"
     );
 
     if (priceInput === null) {
@@ -1826,7 +1838,7 @@ resaleButton.addEventListener("click", async () => {
     }
 
     try {
-        const price = ethers.parseEther(priceInput.trim());
+        const price = usdToTrustWei(priceInput.trim());
 
         if (price <= 0n) {
             alert("Please enter a price greater than zero.");
@@ -1834,11 +1846,10 @@ resaleButton.addEventListener("click", async () => {
         }
 
         const confirmed = confirm(
-    "List Ticket #" + ticketId +
-    " for " + ethers.formatEther(price) +
-    " TRUST? You will need to approve the transaction in MetaMask."
-);
-
+            "List Ticket #" + ticketId +
+            " for " + trustWeiToUsd(price) +
+            "? The listing will be recorded in TRUST on DIDLab."
+        );
 if (!confirmed) {
     return;
 }
@@ -1922,7 +1933,7 @@ if (ticket[6]) {
         console.error("My Tickets error:", error);
     }
 }
-		
+
 async function getMintedTicketIds() {
     if (!readProvider) {
         readProvider = new ethers.JsonRpcProvider(DIDLAB_RPC, 252501);
@@ -2420,8 +2431,8 @@ async function updateIssuerDashboard() {
 		el("listingBadge").className = available ? "badge" : "badge inactive";
 
 		el("ticketPrice").textContent =
-		ethers.formatEther(secondaryListed ? t.secondaryPrice : t.primaryPrice) +
-		" DIDLab tokens" + (secondaryListed ? " (resale)" : "");
+    trustWeiToUsd(secondaryListed ? t.secondaryPrice : t.primaryPrice) +
+    (secondaryListed ? " (resale)" : "");
 
 		el("ticketOwner").textContent =
 		t.owner.toLowerCase() === CONTRACT_ADDRESS.toLowerCase()
@@ -2431,10 +2442,12 @@ async function updateIssuerDashboard() {
 		el("ticketIssuer").textContent = t.issuer;
 		el("secondarySeller").textContent =
 		secondaryListed ? t.secondarySeller : "None";
+
 		el("secondaryPrice").textContent =
-		secondaryListed
-		? ethers.formatEther(t.secondaryPrice) + " DIDLab tokens"
-		: "Not listed";
+    secondaryListed
+        ? trustWeiToUsd(t.secondaryPrice)
+        : "Not listed";
+
 		el("ticketRedeemed").textContent = t.redeemed ? "Yes" : "No";
 
 		el("ticketStatus").textContent =
@@ -2936,12 +2949,12 @@ async function bulkMintTickets() {
 
     let price;
     try {
-        price = ethers.parseEther(priceText);
+        price = usdToTrustWei(priceText);
         if (price <= 0n) {
             throw new Error("Price must be greater than zero.");
         }
     } catch (_) {
-        status.textContent = "Enter a valid positive price in TRUST.";
+        status.textContent = "Enter a valid positive price in USD (up to 2 decimal places).";
         return;
     }
 
@@ -2949,7 +2962,7 @@ async function bulkMintTickets() {
 
     if (!confirm(
         "Mint " + count + " tickets for the selected event at " +
-        ethers.formatEther(price) + " TRUST each? " +
+        trustWeiToUsd(price) + " each (paid in TRUST)? " +
         "MetaMask will request one transaction approval per ticket."
     )) {
         return;
@@ -3065,7 +3078,7 @@ async function bulkMintTickets() {
     } finally {
         busy = false;
         el("bulkMintButton").disabled = false;
-    
+
         try {
             await loadIssuerEvents();
             await loadEventTickets();
@@ -3530,10 +3543,9 @@ el("buyPrimaryButton").addEventListener("click", async () => {
 		const price = ticketState.primaryPrice;
 
 		if (!confirm(
-		"Buy Ticket #1 for " + ethers.formatEther(price) +
-		" DIDLab tokens? Review the transaction in MetaMask before confirming."
-		)) return;
-
+    "Buy Ticket #1 for " + trustWeiToUsd(price) +
+    "? Payment will be made in TRUST through MetaMask."
+)) return;
 		runTransaction("Primary purchase", contract =>
 		contract.buyPrimaryTicket(TOKEN_ID, { value: price })
 		);
@@ -3546,38 +3558,43 @@ el("buyPrimaryButton").addEventListener("click", async () => {
 		const price = ticketState.secondaryPrice;
 
 		if (!confirm(
-		"Buy this resale ticket for " + ethers.formatEther(price) +
-		" DIDLab tokens? Review the transaction in MetaMask before confirming."
-		)) return;
+    "Buy this resale ticket for " + trustWeiToUsd(price) +
+    "? Payment will be made in TRUST through MetaMask."
+)) return;
 
 		runTransaction("Resale purchase", contract =>
 		contract.buySecondaryTicket(TOKEN_ID, { value: price })
 		);
 		});
 
-		el("listResaleButton").addEventListener("click", () => {
-		const value = el("resalePrice").value.trim();
 
-		try {
-		if (!value || !Number.isFinite(Number(value)) || Number(value) <= 0) {
-		throw new Error("Enter a resale price greater than zero.");
-		}
+el("listResaleButton").addEventListener("click", () => {
+    const value = el("resalePrice").value.trim();
 
-		const price = ethers.parseEther(value);
-		if (price <= 0n) throw new Error("Enter a resale price greater than zero.");
+    try {
+        const price = usdToTrustWei(value);
 
-		if (!confirm(
-		"List Ticket #1 for " + value +
-		" DIDLab tokens? The ticket will move into marketplace escrow."
-		)) return;
+        if (price <= 0n) {
+            throw new Error("Enter a resale price greater than zero.");
+        }
 
-		runTransaction("Resale listing", contract =>
-		contract.listTicket(TOKEN_ID, price)
-		);
-		} catch (error) {
-		setActionStatus("Invalid resale price: " + errorMessage(error));
-		}
-		});
+        if (!confirm(
+            "List Ticket #1 for " + trustWeiToUsd(price) +
+            "? The ticket will move into marketplace escrow. " +
+            "The blockchain listing will use TRUST."
+        )) return;
+
+        runTransaction(
+            "Resale listing",
+            contract => contract.listTicket(TOKEN_ID, price)
+        );
+    } catch (error) {
+        setActionStatus(
+            "Invalid resale price: " + errorMessage(error)
+        );
+    }
+});
+
 
 		el("cancelListingButton").addEventListener("click", () => {
 		if (!confirm("Cancel your resale listing for Ticket #1?")) return;
