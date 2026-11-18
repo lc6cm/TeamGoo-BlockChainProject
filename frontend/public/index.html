@@ -1,17 +1,205 @@
 ﻿
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>TeamGoo | Ticket Marketplace</title>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.5/ethers.umd.min.js"></script>
-	<style>
-		* {
-			box-sizing: border-box;
-		}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TeamGoo | Ticket Marketplace</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.5/ethers.umd.min.js">
+// Admission code authentication and issuer redemption (Option A: MetaMask signs the on-chain transaction).
+let holderSession = null;
+let pendingRedemption = null;
 
-		body {
+async function authenticateTicketHolder() {
+    if (!signer || !(await checkNetwork())) throw new Error("Connect your ticket-holder wallet on DIDLab.");
+    const address = await signer.getAddress();
+    if (holderSession && holderSession.address.toLowerCase() === address.toLowerCase() && holderSession.expiresAt > Date.now() + 30000) {
+        return holderSession.token;
+    }
+    const challengeResponse = await fetch("/api/holder/challenge", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address })
+    });
+    const challenge = await challengeResponse.json();
+    if (!challengeResponse.ok) throw new Error(challenge.error || "Could not request ticket-holder login.");
+    const signature = await signer.signMessage(challenge.message);
+    const loginResponse = await fetch("/api/holder/login", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nonce: challenge.nonce, signature })
+    });
+    const login = await loginResponse.json();
+    if (!loginResponse.ok) throw new Error(login.error || "Ticket-holder login failed.");
+    holderSession = { token: login.token, address, expiresAt: Date.now() + (login.expiresInSeconds || 3600) * 1000 };
+    return holderSession.token;
+}
+
+async function loadRedemptionEvents() {
+    const select = el("redemptionEventId");
+    if (!select || !signer || el("issuerDashboard").hidden) return;
+    const previous = select.value;
+    select.replaceChildren(new Option("Loading your events...", ""));
+    try {
+        const address = (await signer.getAddress()).toLowerCase();
+        const [orgResponse, eventsResponse] = await Promise.all([fetch("/api/organizations"), fetch("/api/events")]);
+        if (!orgResponse.ok || !eventsResponse.ok) throw new Error("Could not load events.");
+        const orgs = await orgResponse.json();
+        const eventData = await eventsResponse.json();
+        const org = orgs.organizations.find(o => o.wallet_address.toLowerCase() === address);
+        if (!org) throw new Error("Issuer organization not registered.");
+        select.replaceChildren(new Option("Select an event...", ""));
+        for (const event of eventData.events) {
+            if (Number(event.organization_id) === Number(org.id)) {
+                select.add(new Option(event.name + " (Event #" + event.id + ")", String(event.id)));
+            }
+        }
+        if ([...select.options].some(o => o.value === previous)) select.value = previous;
+    } catch (error) {
+        select.replaceChildren(new Option("Could not load events", ""));
+        el("redemptionVerificationResult").textContent = errorMessage(error);
+    }
+}
+
+function resetAdmissionVerification() {
+    pendingRedemption = null;
+    el("redeemAdmissionTicketButton").disabled = true;
+    el("redemptionTransactionStatus").textContent = "No ticket selected for redemption.";
+}
+
+el("redemptionEventId").addEventListener("change", resetAdmissionVerification);
+el("redemptionAdmissionCode").addEventListener("input", resetAdmissionVerification);
+
+el("verifyAdmissionCodeButton").addEventListener("click", async () => {
+    const status = el("redemptionVerificationResult");
+    const button = el("verifyAdmissionCodeButton");
+    resetAdmissionVerification();
+    const eventId = Number(el("redemptionEventId").value);
+    const admissionCode = el("redemptionAdmissionCode").value.trim().toUpperCase();
+    if (!Number.isSafeInteger(eventId) || eventId <= 0 || !/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/.test(admissionCode)) {
+        status.textContent = "Select an event and enter a code in XXXX-XXXX-XXXX format.";
+        return;
+    }
+    button.disabled = true;
+    status.textContent = "Authenticating issuer and verifying admission code on DIDLab...";
+    try {
+        const issuerSession = await authenticateIssuer();
+        const response = await fetch("/api/redemption/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + issuerSession.token },
+            body: JSON.stringify({ eventId, admissionCode }), cache: "no-store"
+        });
+        const result = await response.json();
+        if (!response.ok || result.valid !== true) throw new Error(result.error || "Admission code invalid.");
+        pendingRedemption = { ticketId: String(result.ticketId), eventId, admissionCode, issuerAddress: issuerSession.address };
+        status.textContent = "VALID — Ticket #" + result.ticketId + " for " + result.eventName + ". Confirm redemption below.";
+        el("redeemAdmissionTicketButton").disabled = false;
+    } catch (error) {
+        status.textContent = "Verification failed: " + errorMessage(error);
+    } finally {
+        button.disabled = false;
+    }
+});
+
+el("redeemAdmissionTicketButton").addEventListener("click", async () => {
+    if (busy || !pendingRedemption) return;
+    const candidate = { ...pendingRedemption };
+    const status = el("redemptionTransactionStatus");
+    const button = el("redeemAdmissionTicketButton");
+    button.disabled = true;
+    status.textContent = "Rechecking admission code before submitting transaction...";
+    try {
+        if (!signer || (await signer.getAddress()).toLowerCase() !== candidate.issuerAddress.toLowerCase()) {
+            throw new Error("Issuer wallet changed. Verify the admission code again.");
+        }
+        const issuerSession = await authenticateIssuer();
+        const response = await fetch("/api/redemption/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + issuerSession.token },
+            body: JSON.stringify({ eventId: candidate.eventId, admissionCode: candidate.admissionCode }), cache: "no-store"
+        });
+        const result = await response.json();
+        if (!response.ok || !result.valid || String(result.ticketId) !== candidate.ticketId) {
+            throw new Error(result.error || "Admission code is no longer valid. Verify again.");
+        }
+        if (!confirm("Redeem Ticket #" + candidate.ticketId + " on DIDLab? This cannot be undone.")) {
+            status.textContent = "Redemption canceled.";
+            return;
+        }
+        busy = true;
+        const writable = await getWritableContract();
+        if (!(await writable.authorizedOperators(await signer.getAddress()))) {
+            throw new Error("Your wallet is not an authorized redemption operator.");
+        }
+        status.textContent = "Confirm the redemption transaction in MetaMask...";
+        const tx = await writable.redeemTicket(BigInt(candidate.ticketId));
+        status.textContent = "Waiting for DIDLab confirmation: " + tx.hash;
+        const receipt = await tx.wait();
+        if (!receipt || receipt.status !== 1) throw new Error("Redemption transaction reverted or was not confirmed.");
+        showTransactionEvidence(["Outcome: CONFIRMED", "Action: Redeem Ticket #" + candidate.ticketId, "Transaction hash: " + tx.hash, "Block number: " + receipt.blockNumber]);
+        status.textContent = "Ticket #" + candidate.ticketId + " redeemed successfully! Transaction: " + tx.hash;
+        el("redemptionVerificationResult").textContent = "Redeemed — admission code is no longer valid.";
+        el("redemptionAdmissionCode").value = "";
+        pendingRedemption = null;
+        clearEventTicketCache();
+        await loadEventTickets();
+    } catch (error) {
+        status.textContent = transactionRejected(error) ? "MetaMask transaction rejected." : "Redemption failed: " + errorMessage(error);
+        pendingRedemption = null;
+    } finally {
+        busy = false;
+        button.disabled = true;
+    }
+});
+
+// Keep admission-code UI aligned with wallet and issuer dashboard changes.
+const originalUpdateIssuerDashboard = updateIssuerDashboard;
+updateIssuerDashboard = async function () {
+    await originalUpdateIssuerDashboard();
+    if (!el("issuerDashboard").hidden) await loadRedemptionEvents();
+};
+const originalClearWallet = clearWallet;
+clearWallet = function (message) {
+    holderSession = null;
+    resetAdmissionVerification();
+    originalClearWallet(message);
+};
+
+</script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        .digital-ticket {
+            background: #f8fafc;
+            border: 1px solid #dce3ed;
+            border-left: 4px solid #2457d6;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 14px 0;
+        }
+
+        .digital-ticket-header {
+            font-size: 0.75rem;
+            font-weight: bold;
+            letter-spacing: 1.5px;
+            color: #657084;
+            margin-bottom: 12px;
+        }
+
+        .digital-ticket h3 {
+            margin: 0 0 10px;
+            font-size: 1.3rem;
+        }
+
+        .digital-ticket p {
+            margin: 8px 0;
+            overflow-wrap: anywhere;
+        }
+
+        body {
+
 			font-family: Arial, sans-serif;
 			max-width: 1000px;
 			margin: 0 auto;
@@ -195,24 +383,211 @@
 					text-align: left;
 				}
 		}
-	</style>
+
+        /* Clean marketplace layout */
+        body { max-width: 940px; padding: 28px 20px 50px; background: #f6f8fb; color: #1d2939; }
+        header { margin-bottom: 22px; }
+        header h1 { margin: 0 0 4px; font-size: 1.85rem; letter-spacing: -.035em; }
+        header p { margin: 0; font-size: .95rem; }
+        section { margin: 16px 0; padding: 22px; box-shadow: none; border-color: #e3e8f0; }
+        section h2 { margin-bottom: 8px; }
+        section > .muted { margin: 0 0 16px; font-size: .92rem; }
+        button { transition: background .15s ease; }
+        button:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px solid #a5baff; outline-offset: 2px; }
+        .ticket-card { margin-top: 12px; padding: 16px; background: #fff; }
+        .ticket-card .ticket-card { background: #fafbfe; margin-top: 10px; }
+        .ticket-card h3 { margin: 0 0 8px; }
+        .ticket-card p { margin: 6px 0; }
+        .wallet-layout { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .wallet-layout h2 { margin: 0; }
+        .wallet-status { font-size: .9rem; color: #475467; margin: 12px 0 0; }
+        .technical-details { margin-top: 14px; border-top: 1px solid #e8ecf2; padding-top: 12px; }
+        .technical-details summary { cursor: pointer; color: #475467; font-size: .9rem; }
+        .technical-details code { font-size: .82rem; }
+        .technical-details p { margin: 9px 0; font-size: .9rem; }
+        .transaction-panel pre { background: #f6f8fb; padding: 12px; border-radius: 8px; font-size: .83rem; }
+        .transaction-panel input { width: 100%; max-width: 550px; }
+        .transaction-panel summary { cursor: pointer; font-weight: 600; }
+        .transaction-panel details[open] summary { margin-bottom: 12px; }
+        #adminDashboard input, #issuerDashboard input { margin-bottom: 6px; }
+        #myTicketsContainer > .ticket-card, #eventsContainer > .ticket-card { border-color: #e2e8f0; }
+        @media (max-width: 600px) { header h1 { font-size: 1.5rem; } section { padding: 16px; } .wallet-layout { align-items: flex-start; } }
+
+	
+        /* Issuer dashboard */
+        .issuer-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+        .issuer-heading h2 { margin: 0; }
+        .issuer-heading .muted { margin: 4px 0 0; }
+        .issuer-panel { margin-top: 18px; border: 1px solid #e3e8f0; border-radius: 12px; padding: 18px; }
+        .issuer-panel h3 { margin: 0 0 6px; }
+        .issuer-fields { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0; }
+        .issuer-fields label { display: flex; flex-direction: column; gap: 7px; font-weight: 600; font-size: .9rem; }
+        .issuer-fields input { width: 200px; font-weight: normal; }
+        .issuer-panel .status { overflow-wrap: anywhere; }
+        .issuer-management-fields label { flex: 1 1 240px; }
+        .issuer-management-fields input { width: 100%; max-width: 100%; box-sizing: border-box; }
+        .issuer-management-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+        .issuer-management-actions button { flex: 1 1 180px; }
+        #organizationsList .ticket-card, #revokedOrganizationsList .ticket-card { margin-top: 12px; }
+
+
+
+/* Compact Upcoming Events cards */
+
+.event-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 20px;
+    margin-top: 14px;
+}
+
+.event-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+}
+
+.event-card-info {
+    flex: 1;
+    min-width: 220px;
+}
+
+.event-card-info h3 {
+    font-size: 1.25rem;
+    margin: 0 0 5px;
+    color: #1d2939;
+}
+
+.event-organizer {
+    color: #667085;
+    font-size: 0.9rem;
+    margin: 0 0 12px;
+}
+
+.event-meta {
+    color: #475467;
+    font-size: 0.9rem;
+    margin: 5px 0;
+}
+
+.event-description {
+    color: #667085;
+    font-size: 0.9rem;
+    margin-top: 10px;
+}
+
+.event-card-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 10px;
+    min-width: 170px;
+}
+
+.event-ticket-count {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #344054;
+    margin: 0;
+}
+
+.event-view-button {
+    min-width: 150px;
+    margin: 0;
+}
+
+.event-ticket-browser {
+    margin-top: 18px;
+}
+
+.event-ticket-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 12px;
+}
+
+.event-ticket-grid .ticket-card {
+    margin-top: 0;
+}
+
+@media (max-width: 600px) {
+    .event-ticket-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    .event-card-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 14px;
+    }
+
+    .event-card-actions {
+        align-items: stretch;
+    }
+
+    .event-view-button {
+        width: 100%;
+    }
+}
+
+
+        /* Redemption management */
+        .redemption-code-input { width: 240px; max-width: 100%; text-transform: uppercase; letter-spacing: .08em; }
+        .redemption-panel select { padding: 10px; border: 1px solid #cbd4e2; border-radius: 8px; max-width: 100%; }
+        .redemption-panel .small-note { margin: 8px 0; }
+
+        /* Main page navigation */
+        .main-tabs {
+            display: flex;
+            gap: 10px;
+            margin: 18px 0 22px;
+            border-bottom: 1px solid #dce3ed;
+            padding-bottom: 12px;
+        }
+        .main-tab {
+            background: #e9eef9;
+            color: #24448b;
+            margin: 0;
+        }
+        .main-tab:hover { background: #dce5f8; }
+        .main-tab.active { background: #2457d6; color: #fff; }
+        .main-tab.active:hover { background: #1945b5; }
+        .main-tab:focus-visible { outline: 3px solid #a5baff; outline-offset: 2px; }
+
+</style>
 </head>
 <body>
 	<header>
-		<h1>TeamGoo Ticket Marketplace</h1>
-		<p>A blockchain-based ticket marketplace for transparent ownership, transfers, and redemption records.</p>
+		<h1>TeamGoo</h1>
+		<p>Buy, own, and resell verified tickets on DIDLab.</p>
 	</header>
 
-	<section>
-		<h2>Blockchain Connection</h2>
-		<p><strong>Network:</strong> DIDLab</p>
-		<p><strong>Chain ID:</strong> 252501</p>
-		<p><strong>Contract address:</strong><br><code id="contractAddress"></code></p>
-		<button id="connectWallet">Connect MetaMask</button>
-		<p id="walletStatus" class="status">Wallet not connected. Public ticket information is still available.</p>
-		<p id="networkStatus" class="status">Checking wallet network...</p>
-	</section>
+    <nav class="main-tabs" aria-label="Main navigation">
+        <button type="button" id="marketplaceTab" class="main-tab active" aria-controls="marketplacePage" aria-pressed="true">Marketplace</button>
+        <button type="button" id="aboutTab" class="main-tab" aria-controls="aboutProject" aria-pressed="false">About</button>
+    </nav>
 
+    <main id="marketplacePage">
+    <section aria-label="Wallet connection">
+        <div class="wallet-layout">
+            <h2>Wallet</h2>
+            <button id="connectWallet">Connect MetaMask</button>
+        </div>
+        <p id="walletStatus" class="wallet-status status">Wallet not connected. You can still browse tickets.</p>
+        <p id="networkStatus" class="wallet-status status">Checking wallet network...</p>
+        <details class="technical-details">
+            <summary>Network details</summary>
+            <p><strong>Network:</strong> DIDLab · <strong>Chain ID:</strong> 252501</p>
+            <p><strong>Contract:</strong> <code id="contractAddress"></code></p>
+        </details>
+    </section>
 
 	<section id="adminDashboard" hidden>
 		<h2>Service Provider — Admin Dashboard</h2>
@@ -225,87 +600,190 @@
 		<p><strong>Connected administrator:</strong></p>
 		<p id="adminAddress" class="status">Not connected</p>
 
-		<p><strong>Issuer wallet address:</strong></p>
+<div class="issuer-panel" id="issuerManagementPanel">
+    <h3>Manage Issuers</h3>
+    <p class="small-note">Add a new issuer by entering its organization name and wallet address. TeamGoo authorizes the wallet on DIDLab and registers the organization. To revoke an existing issuer, enter or select its wallet address and choose Revoke Issuer.</p>
+    <div class="issuer-fields issuer-management-fields">
+        <label for="organizationName">Organization name
+            <input id="organizationName" type="text" maxlength="100" placeholder="e.g. Kansas City Live Events">
+        </label>
+        <label for="issuerAddress">Issuer wallet address
+            <input id="issuerAddress" type="text" placeholder="0x..." autocomplete="off" spellcheck="false">
+        </label>
+    </div>
+    <p id="issuerStatus" class="status">Enter an issuer wallet address to check authorization.</p>
+    <div class="issuer-management-actions">
+        <button id="registerOrganizationButton" type="button">Add Issuer</button>
+        <button id="revokeIssuerButton" type="button" class="secondary-button">Revoke Issuer</button>
+    </div>
+    <button id="authorizeIssuerButton" type="button" hidden aria-hidden="true">Authorize Issuer</button>
+    <p id="organizationRegistrationStatus" class="status" aria-live="polite">Enter a name and issuer wallet address to begin.</p>
+    <p id="adminActionStatus" class="status" aria-live="polite"></p>
+</div>
 
-		<input
-			id="issuerAddress"
-			type="text"
-			value="0x4F4c46350c75caAA2F88a37b7b83b8ec47949fA5"
-			style="width:100%;max-width:480px"
-		>
+<div class="issuer-panel">
+    <h3>Active Organizations</h3>
+    <p class="small-note">Organizations authorized to issue tickets on DIDLab. Any unverifiable status is shown here for review.</p>
+    <button id="refreshOrganizationsButton" class="secondary-button" type="button">Refresh Organizations</button>
+    <div id="organizationsList">Loading registered organizations...</div>
+</div>
+<div class="issuer-panel">
+    <h3>Revoked Issuers</h3>
+    <p class="small-note">Records are retained for existing events and ticket history. Select Reauthorize to restore an issuer's permission.</p>
+    <div id="revokedOrganizationsList">Loading revoked issuers...</div>
+</div>
 
-		<p id="issuerStatus" class="status">
-			Issuer authorization not checked.
-		</p>
+<div class="issuer-panel" id="operatorManagementPanel">
+    <h3>Manage Redemption Operators</h3>
+    <p class="small-note">Authorize a wallet to redeem tickets on DIDLab. Only the smart-contract owner can change operator permissions. This is a blockchain-wide permission, not an organization-specific permission.</p>
+    <div class="issuer-fields issuer-management-fields">
+        <label for="redemptionOperatorAddress">Operator wallet address
+            <input id="redemptionOperatorAddress" type="text" placeholder="0x..." autocomplete="off" spellcheck="false">
+        </label>
+    </div>
+    <div class="issuer-management-actions">
+        <button id="authorizeOperatorButton" type="button">Authorize Operator</button>
+        <button id="revokeOperatorButton" type="button" class="secondary-button">Revoke Operator</button>
+    </div>
+    <p id="operatorManagementStatus" class="status" aria-live="polite">Enter a wallet address to manage redemption permissions.</p>
+</div>
 
-		<button id="authorizeIssuerButton">
-			Authorize Issuer
-		</button>
-
-		<button
-			id="revokeIssuerButton"
-			class="secondary-button">
-			Revoke Issuer
-		</button>
-
-		<p id="adminActionStatus" class="status"></p>
 	</section>
 
 
 <section id="issuerDashboard" hidden>
-    <h2>Organization — Issuer Dashboard</h2>
+    <div class="issuer-heading">
+        <div>
+            <h2>Organization — Issuer Dashboard</h2>
+            <p class="muted">Manage your organization's ticket inventory.</p>
+        </div>
+        <span class="badge">Authorized issuer</span>
+    </div>
 
-    <p class="muted">
-        Authorized organizations can create new tickets
-        and list them for primary sale.
+    <details class="technical-details">
+        <summary>Issuer wallet and authorization</summary>
+        <p id="connectedIssuerAddress" class="status">Not connected</p>
+        <p id="issuerAuthorizationStatus" class="status">Checking authorization...</p>
+    </details>
+
+
+<div class="issuer-panel">
+    <h3>Create New Event</h3>
+
+    <p id="issuerOrganizationName" class="small-note">
+        Checking registered organization...
     </p>
 
-    <p><strong>Connected issuer:</strong></p>
-    <p id="connectedIssuerAddress" class="status">Not connected</p>
-
-    <p><strong>Authorization status:</strong></p>
-    <p id="issuerAuthorizationStatus" class="status">
-        Checking authorization...
-    </p>
-
-    <p>
-        <label for="mintTokenId">
-            <strong>New ticket ID:</strong>
+    <div class="issuer-fields">
+        <label for="newEventName">
+            Event name
+            <input id="newEventName" type="text"
+                   maxlength="150"
+                   placeholder="e.g. Summer Music Festival">
         </label>
-    </p>
-    <input
-        id="mintTokenId"
-        type="number"
-        min="1"
-        step="1"
-        placeholder="e.g. 2"
-    >
 
-    <p>
-        <label for="mintPrice">
-            <strong>Primary ticket price (TRUST):</strong>
+        <label for="newEventVenue">
+            Venue
+            <input id="newEventVenue" type="text"
+                   maxlength="200"
+                   placeholder="e.g. Kansas City">
         </label>
-    </p>
-    <input
-        id="mintPrice"
-        type="number"
-        min="0"
-        step="any"
-        placeholder="e.g. 0.01"
-    >
 
+        <label for="newEventDate">
+            Event date
+            <input id="newEventDate" type="date">
+        </label>
+    </div>
+
+    <label for="newEventDescription">
+        <strong>Description</strong>
+    </label>
     <p>
-        <button id="mintTicketButton">Mint Ticket</button>
+        <textarea id="newEventDescription"
+                  maxlength="2000"
+                  rows="4"
+                  placeholder="Describe your event..."
+                  style="width:100%;padding:10px;border:1px solid #cbd4e2;border-radius:8px;"></textarea>
     </p>
 
-    <p id="mintStatus" class="status">
-        Enter a ticket ID and price to mint a ticket.
+    <button id="createEventButton">
+        Create Event
+    </button>
+
+    <p id="createEventStatus" class="status" aria-live="polite">
+        Enter the event details to get started.
     </p>
+</div>
+
+
+    <div class="issuer-panel">
+        <h3>Mint Tickets</h3>
+        <p class="small-note">Choose an event, quantity, and price. TeamGoo automatically assigns unique ticket IDs.</p>
+        <label for="bulkEventId"><strong>Select Event</strong>
+            <select id="bulkEventId" required><option value="">Loading your events...</option></select>
+        </label>
+        <div class="issuer-fields">
+            <label for="bulkCount">Number of tickets (1–10)
+                <input id="bulkCount" type="number" min="1" max="10" step="1" value="1" required>
+            </label>
+            <label for="bulkPrice">Price per ticket (TRUST)
+                <input id="bulkPrice" type="number" min="0" step="any" placeholder="e.g. 0.01" required>
+            </label>
+        </div>
+        <p class="small-note">Each ticket requires its own MetaMask approval and blockchain transaction.</p>
+        <button id="bulkMintButton">Mint Tickets</button>
+        <p id="bulkMintStatus" class="status" aria-live="polite">Ready to mint tickets.</p>
+    </div>
+
+    <div class="issuer-panel redemption-panel" id="redemptionPanel">
+        <h3>Ticket Redemption</h3>
+        <p class="small-note">At the entrance, enter the customer's admission code to verify their ticket before redeeming it. Verify the customer admission code, then confirm redemption with MetaMask.</p>
+        <div class="issuer-fields">
+            <label for="redemptionEventId">Event
+                <select id="redemptionEventId"><option value="">Select an event...</option></select>
+            </label>
+            <label for="redemptionAdmissionCode">Admission code
+                <input id="redemptionAdmissionCode" class="redemption-code-input" type="text" placeholder="XXXX-XXXX-XXXX" maxlength="14" autocomplete="off" spellcheck="false">
+            </label>
+        </div>
+        <button id="verifyAdmissionCodeButton" type="button">Verify Ticket</button>
+        <div id="redemptionVerificationResult" class="status" aria-live="polite">Select an event and enter an admission code.</div>
+        <button id="redeemAdmissionTicketButton" type="button" disabled>Redeem Ticket with MetaMask</button>
+        <p id="redemptionTransactionStatus" class="status" aria-live="polite">No ticket selected for redemption.</p>
+    </div>
+    
 </section>
 
 
+<section id="eventsSection">
+    <h2>Upcoming Events</h2>
+    <p class="muted">
+        Browse events and available blockchain tickets.
+    </p>
 
-	<section>
+    <div id="eventsContainer">
+        Loading events...
+    </div>
+</section>
+
+<section id="myTicketsSection" hidden>
+    <h2>My Tickets</h2>
+
+    <p class="muted">
+        Tickets owned by your connected MetaMask wallet.
+    </p>
+
+    <div id="myTicketsContainer">
+        Loading your tickets...
+    </div>
+    <details id="redeemedTicketsSection" class="ticket-card" hidden style="margin-top: 18px;">
+        <summary style="cursor:pointer; font-weight:700; padding: 4px 0;">Redeemed Tickets (<span id="redeemedTicketsCount">0</span>)</summary>
+        <p class="muted">These tickets have already been used. You can still view them as souvenirs.</p>
+        <div id="redeemedTicketsContainer"></div>
+    </details>
+</section>
+
+	<section id="legacyMarketplace" hidden>
 		<h2>Ticket Marketplace</h2>
 		<p class="muted">Ticket information is retrieved from the deployed smart contract on DIDLab.</p>
 		<button id="refreshTicket" class="secondary-button">Refresh Ticket #1</button>
@@ -347,25 +825,151 @@
 
 				<button id="cancelListingButton" class="secondary-button" hidden>Cancel Resale Listing</button>
 				<p id="actionStatus" class="status">Connect MetaMask to use ticket actions.</p>
-                <h3>Transaction Evidence</h3>
-                <input id="verifyTxHash" type="text" placeholder="Transaction hash" style="width:100%;max-width:650px">
-                <button id="verifyTxButton" class="secondary-button">Verify Transaction</button>
-                <pre id="transactionEvidence" class="status"
-                     style="white-space:pre-wrap;overflow-wrap:anywhere">No transaction submitted yet.</pre>
+
 
 			</div>
 		</div>
 	</section>
 
-	<section>
-		<h2>About the Project</h2>
-		<p>Ticket buyers and sellers can have difficulty verifying whether tickets are authentic, who owns them, whether they have been transferred, and whether they have already been redeemed. This project uses blockchain records to make ticket ownership and marketplace activity independently verifiable.</p>
-		<p><strong>Team:</strong> Joey Contreras and Lupe Campos</p>
-		<p><a href="https://github.com/lc6cm/TeamGoo-BlockChainProject" target="_blank" rel="noopener noreferrer">View the GitHub repository</a></p>
-	</section>
+    <section class="transaction-panel">
+        <details id="transactionDetails">
+            <summary>Transaction details &amp; verification</summary>
+            <p class="muted">View the last wallet transaction or verify a DIDLab transaction hash.</p>
+                <h3>Transaction Evidence</h3>
+                <input id="verifyTxHash" type="text" placeholder="Transaction hash" style="width:100%;max-width:650px">
+                <button id="verifyTxButton" class="secondary-button">Verify Transaction</button>
+                <pre id="transactionEvidence" class="status"
+                     style="white-space:pre-wrap;overflow-wrap:anywhere">No transaction submitted yet.</pre>
+        </details>
+    </section>
+
+	
+</main>
+
+<section id="aboutProject" hidden>
+    <h2>About TeamGoo</h2>
+
+    <p class="muted">
+        A blockchain-based ticket marketplace designed to make
+        buying, owning, and reselling event tickets more transparent
+        and verifiable.
+    </p>
+
+    <h3>The Problem</h3>
+    <p>
+        Traditional ticket marketplaces face challenges such as
+        counterfeit tickets, duplicate sales, and uncertainty
+        about ticket ownership. Buyers often depend on centralized
+        platforms to confirm whether a ticket is legitimate.
+    </p>
+
+    <h3>Our Solution</h3>
+    <p>
+        TeamGoo provides a marketplace where authorized organizations
+        can issue digital tickets, buyers can purchase them, and
+        ticket owners can list them for resale.
+    </p>
+    <p>
+        Ticket ownership and transactions are recorded on the
+        DIDLab blockchain, allowing the marketplace to verify
+        ticket information against smart contract records.
+    </p>
+
+    <h3>Why Blockchain?</h3>
+    <p>
+        Blockchain provides a shared, tamper-resistant history
+        of ticket transactions. Rather than relying only on
+        information stored in a marketplace database, ticket
+        ownership and transfers can be checked against
+        blockchain records.
+    </p>
+
+    <h3>How TeamGoo Works</h3>
+    <ol>
+        <li>
+            <strong>Ticket Issuance:</strong>
+            Authorized organizations create events and mint
+            digital tickets using a smart contract.
+        </li>
+        <li>
+            <strong>Ticket Purchase:</strong>
+            Buyers connect their MetaMask wallet and purchase
+            available tickets through the marketplace.
+        </li>
+        <li>
+            <strong>Ownership Verification:</strong>
+            The smart contract records ticket ownership,
+            allowing users to verify who holds a ticket.
+        </li>
+        <li>
+            <strong>Ticket Resale:</strong>
+            Ticket owners can list tickets for resale,
+            and ownership is updated after a successful purchase.
+        </li>
+    </ol>
+
+    <h3>On-Chain vs. Off-Chain Data</h3>
+    <p>
+        TeamGoo uses a hybrid approach to avoid storing
+        unnecessary information on the blockchain.
+    </p>
+    <p>
+        <strong>On-chain:</strong>
+        Ticket identifiers, ownership, prices, transaction
+        records, and ticket status.
+    </p>
+    <p>
+        <strong>Off-chain:</strong>
+        Organization names, event descriptions, venues,
+        dates, and associations between events and tickets.
+    </p>
+
+    <h3>Technology</h3>
+    <p>
+        TeamGoo uses Solidity smart contracts deployed on
+        DIDLab, MetaMask for wallet interactions, and
+        ethers.js to communicate with the blockchain.
+        An Express backend and SQLite database manage
+        event and organization information.
+    </p>
+
+    <h3>Project Team</h3>
+    <p>
+        Developed by Joey Contreras and Lupe Campos.
+    </p>
+
+    <p>
+        <a
+            href="https://github.com/lc6cm/TeamGoo-BlockChainProject"
+            target="_blank"
+            rel="noopener noreferrer">
+            View our GitHub repository
+        </a>
+    </p>
+</section>
+
 
 	<script>
 		"use strict";
+
+        const el = id => document.getElementById(id);
+
+        // Switch between Marketplace and About without reloading the page.
+        function showPage(page) {
+            const showAbout = page === "about";
+            el("marketplacePage").hidden = showAbout;
+            el("aboutProject").hidden = !showAbout;
+
+            const marketplaceTab = el("marketplaceTab");
+            const aboutTab = el("aboutTab");
+            marketplaceTab.classList.toggle("active", !showAbout);
+            aboutTab.classList.toggle("active", showAbout);
+            marketplaceTab.setAttribute("aria-pressed", String(!showAbout));
+            aboutTab.setAttribute("aria-pressed", String(showAbout));
+        }
+
+        el("marketplaceTab").addEventListener("click", () => showPage("marketplace"));
+        el("aboutTab").addEventListener("click", () => showPage("about"));
 
 		const CONTRACT_ADDRESS = "0x98dEca57f98504fF09AcdBF1F2345ABF72EbA3c6";
 		const DIDLAB_CHAIN_ID = "0x3da55";
@@ -374,20 +978,28 @@
 		const ZERO_ADDRESS = ethers.ZeroAddress;
 
 		
-	const CONTRACT_ABI = [
-		"function owner() view returns (address)",
-		"function authorizedIssuers(address issuer) view returns (bool)",
-		"function setIssuer(address issuer, bool authorized)",
-		"function mintTicket(uint256 tokenId, uint256 price)",
+	
+const CONTRACT_ABI = [
+    "function owner() view returns (address)",
+    "function authorizedIssuers(address issuer) view returns (bool)",
+    "function setIssuer(address issuer, bool authorized)",
+    "function setOperator(address operator, bool authorized)",
+    "function redeemTicket(uint256 tokenId)",
+    "function mintTicket(uint256 tokenId, uint256 price)",
 
-		"function ticketInfo(uint256 tokenId) view returns (address ticketOwner, address issuer, uint256 primaryPrice, bool primaryListed, address secondarySeller, uint256 secondaryPrice, bool redeemed)",
-		"function buyPrimaryTicket(uint256 tokenId) payable",
-		"function listTicket(uint256 tokenId, uint256 price)",
-		"function cancelListing(uint256 tokenId)",
-		"function buySecondaryTicket(uint256 tokenId) payable",
+    // Events for discovering minted tickets and tracking sales
+    "event TicketMinted(uint256 indexed tokenId, address indexed issuer, uint256 price)",
+    "event PrimaryTicketSold(uint256 indexed tokenId, address indexed buyer, uint256 price)",
 
-		"event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
-	];
+    "function ticketInfo(uint256 tokenId) view returns (address ticketOwner, address issuer, uint256 primaryPrice, bool primaryListed, address secondarySeller, uint256 secondaryPrice, bool redeemed)",
+    "function buyPrimaryTicket(uint256 tokenId) payable",
+    "function listTicket(uint256 tokenId, uint256 price)",
+    "function cancelListing(uint256 tokenId)",
+    "function buySecondaryTicket(uint256 tokenId) payable",
+
+    "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
+];
+
 
 
 		document.getElementById("contractAddress").textContent = CONTRACT_ADDRESS;
@@ -397,8 +1009,962 @@
 		let ticketState = null;
 		let busy = false;
 		let readProvider = null;
+        // Issuer wallets can browse events, but cannot purchase in the TeamGoo UI.
+        let issuerWalletRestricted = false;
+        let adminWalletRestricted = false;
+        async function requireCustomerForPurchase() {
+            if (!signer) throw new Error("Connect a customer wallet to buy tickets.");
+            const address = await signer.getAddress();
+            if (!readProvider) readProvider = new ethers.JsonRpcProvider(DIDLAB_RPC, 252501);
+            const readContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, readProvider);
+            const issuer = await readContract.authorizedIssuers(address);
+            if (issuer) throw new Error("Issuer wallets can view events but cannot buy tickets in TeamGoo. Connect a customer wallet.");
+        }
 
-		const el = id => document.getElementById(id);
+
+
+
+const EVENT_TICKETS_PER_PAGE = 10;
+
+let expandedEventId = null;
+let eventTicketPage = 1;
+let eventTicketFilter = "all";
+let eventBrowserLoadVersion = 0;
+
+// Browser cache for blockchain ticket availability.
+const EVENT_TICKET_CACHE_MS = 30_000;
+const eventTicketCache = new Map();
+
+function clearEventTicketCache() {
+    eventTicketCache.clear();
+}
+
+
+async function loadEvents() {
+    try {
+        const response = await fetch("/api/events");
+
+        if (!response.ok) {
+            throw new Error("Could not load events from database.");
+        }
+
+        const data = await response.json();
+        const events = Array.isArray(data.events) ? data.events : [];
+        const container = el("eventsContainer");
+
+        container.replaceChildren();
+
+        if (events.length === 0) {
+            container.textContent = "No events have been created yet.";
+            return [];
+        }
+
+        // Display events in date order.
+        events.sort((a, b) =>
+            String(a.date || a.event_date).localeCompare(
+                String(b.date || b.event_date)
+            )
+        );
+
+        for (const event of events) {
+
+            // Main event card
+            const card = document.createElement("div");
+            card.className = "event-card";
+
+            const header = document.createElement("div");
+            header.className = "event-card-header";
+
+            // Left side: event information
+            const info = document.createElement("div");
+            info.className = "event-card-info";
+
+            const heading = document.createElement("h3");
+            heading.textContent = event.name;
+
+            const org = document.createElement("p");
+            org.className = "event-organizer";
+            org.textContent =
+                "Organized by " + (event.organization_name || "Unknown");
+
+            const venue = document.createElement("p");
+            venue.className = "event-meta";
+            venue.textContent = "📍 " + event.venue;
+
+            const date = document.createElement("p");
+            date.className = "event-meta";
+
+            const rawDate = event.date || event.event_date;
+
+            let formattedDate = "To be announced";
+
+            if (rawDate) {
+                const parsedDate = new Date(rawDate + "T12:00:00");
+
+                if (!Number.isNaN(parsedDate.getTime())) {
+                    formattedDate = parsedDate.toLocaleDateString(
+                        "en-US",
+                        {
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric"
+                        }
+                    );
+                }
+            }
+
+            date.textContent = "📅 " + formattedDate;
+
+            const description = document.createElement("p");
+            description.className = "event-description";
+            description.textContent = event.description || "";
+
+            info.append(
+                heading,
+                org,
+                date,
+                venue,
+                description
+            );
+
+            // Right side: availability and button
+            const actions = document.createElement("div");
+            actions.className = "event-card-actions";
+
+            const count = document.createElement("p");
+            count.id = "event-tickets-" + event.id;
+            count.className = "event-ticket-count";
+
+            const issued = Array.isArray(event.ticketIds)
+                ? event.ticketIds.length
+                : 0;
+
+            count.textContent =
+                issued + " ticket" +
+                (issued === 1 ? "" : "s") +
+                " issued";
+
+            const toggle = document.createElement("button");
+            toggle.className =
+                "secondary-button event-view-button";
+
+            toggle.textContent =
+                String(expandedEventId) === String(event.id)
+                    ? "Hide Tickets"
+                    : "View Tickets";
+
+            actions.append(count, toggle);
+
+            header.append(info, actions);
+
+            // Expanded ticket list appears below the header.
+            const ticketList = document.createElement("div");
+            ticketList.id = "event-ticket-list-" + event.id;
+            ticketList.className = "event-ticket-browser";
+
+            card.append(header, ticketList);
+            container.appendChild(card);
+
+            toggle.addEventListener("click", async () => {
+                if (
+                    String(expandedEventId) === String(event.id)
+                ) {
+                    expandedEventId = null;
+                    eventBrowserLoadVersion++;
+                    await loadEvents();
+
+                } else {
+                    expandedEventId = event.id;
+                    eventTicketPage = 1;
+                    eventTicketFilter = "all";
+
+                    await loadEventTickets();
+                }
+            });
+        }
+
+        return events;
+
+    } catch (error) {
+        console.error("Event loading failed:", error);
+
+        el("eventsContainer").textContent =
+            "Could not load events. Please refresh.";
+
+        return [];
+    }
+}
+
+async function loadEventTickets() {
+    const version = ++eventBrowserLoadVersion;
+    const events = await loadEvents();
+
+    if (
+        version !== eventBrowserLoadVersion ||
+        expandedEventId === null
+    ) {
+        return;
+    }
+
+    const event = events.find(
+        e => String(e.id) === String(expandedEventId)
+    );
+
+    if (!event) {
+        expandedEventId = null;
+        return;
+    }
+
+    const ticketList = el(
+        "event-ticket-list-" + event.id
+    );
+
+    const countElement = el(
+        "event-tickets-" + event.id
+    );
+
+    if (!ticketList) return;
+
+    ticketList.textContent =
+        "Checking ticket availability on DIDLab...";
+
+    try {
+        if (!readProvider) {
+            readProvider = new ethers.JsonRpcProvider(
+                DIDLAB_RPC,
+                252501
+            );
+        }
+
+        const contract = new ethers.Contract(
+            CONTRACT_ADDRESS,
+            CONTRACT_ABI,
+            readProvider
+        );
+
+        const ids = Array.isArray(event.ticketIds)
+            ? event.ticketIds
+            : [];
+
+        
+let available = [];
+let failed = 0;
+
+const cacheKey = String(event.id);
+const ticketIdsKey = JSON.stringify(ids.map(String));
+const cached = eventTicketCache.get(cacheKey);
+
+if (
+    cached &&
+    cached.ticketIdsKey === ticketIdsKey &&
+    Date.now() - cached.timestamp < EVENT_TICKET_CACHE_MS
+) {
+    // Reuse recently verified blockchain information.
+    available = cached.available;
+    failed = cached.failed;
+
+    console.log(
+        "Using cached tickets for event #" + event.id
+    );
+
+} else {
+    console.log(
+        "Fetching tickets from DIDLab for event #" + event.id
+    );
+
+    // Fetch blockchain information in batches of 8.
+    for (let offset = 0; offset < ids.length; offset += 8) {
+        const batch = ids.slice(offset, offset + 8);
+
+        const results = await Promise.all(
+            batch.map(async ticketId => {
+                try {
+                    const ticket = await contract.ticketInfo(
+                        ticketId
+                    );
+
+                    const primary =
+                        ticket[3] &&
+                        ticket[0].toLowerCase() ===
+                            CONTRACT_ADDRESS.toLowerCase();
+
+                    const resale =
+                        ticket[4].toLowerCase() !==
+                            ethers.ZeroAddress.toLowerCase();
+
+                    if (
+                        ticket[6] ||
+                        (!primary && !resale)
+                    ) {
+                        return null;
+                    }
+
+                    return {
+                        id: ticketId,
+                        resale: resale,
+                        price: resale
+                            ? ticket[5]
+                            : ticket[2]
+                    };
+
+                } catch (error) {
+                    console.error(
+                        "Could not load ticket #" + ticketId,
+                        error
+                    );
+
+                    failed++;
+                    return null;
+                }
+            })
+        );
+
+        available.push(...results.filter(Boolean));
+
+        if (version !== eventBrowserLoadVersion) {
+            return;
+        }
+    }
+
+    if (version !== eventBrowserLoadVersion) {
+        return;
+    }
+
+    // Save only fully verified results.
+    if (failed === 0) {
+        eventTicketCache.set(cacheKey, {
+            timestamp: Date.now(),
+            ticketIdsKey,
+            available: [...available],
+            failed
+        });
+     }
+}
+
+if (version !== eventBrowserLoadVersion) {
+    return;
+}
+
+countElement.textContent =
+    available.length + " ticket" +
+    (available.length === 1 ? "" : "s") +
+    " available" +
+    (
+        failed
+            ? " (" + failed + " could not be verified)"
+            : ""
+    );
+        const renderTickets = () => {
+            if (version !== eventBrowserLoadVersion) {
+                return;
+            }
+
+            ticketList.replaceChildren();
+
+            // Primary / resale filtering controls.
+            const controls = document.createElement("div");
+
+            controls.style.cssText =
+                "display:flex;gap:8px;align-items:center;" +
+                "flex-wrap:wrap;margin:12px 0";
+
+            const filterLabel = document.createElement("label");
+            filterLabel.textContent = "Show: ";
+
+            const select = document.createElement("select");
+
+            for (const [value, label] of [
+                ["all", "All available"],
+                ["primary", "Primary sale"],
+                ["resale", "Resale"]
+            ]) {
+                const option = document.createElement("option");
+                option.value = value;
+                option.textContent = label;
+
+                select.appendChild(option);
+            }
+
+            select.value = eventTicketFilter;
+
+            select.addEventListener("change", () => {
+                eventTicketFilter = select.value;
+                eventTicketPage = 1;
+                renderTickets();
+            });
+
+            filterLabel.appendChild(select);
+            controls.appendChild(filterLabel);
+            ticketList.appendChild(controls);
+
+            // Apply the selected ticket filter.
+            const filtered = available.filter(ticket =>
+                eventTicketFilter === "all" ||
+                (
+                    eventTicketFilter === "resale"
+                        ? ticket.resale
+                        : !ticket.resale
+                )
+            );
+
+            const pages = Math.max(
+                1,
+                Math.ceil(
+                    filtered.length / EVENT_TICKETS_PER_PAGE
+                )
+            );
+
+            eventTicketPage = Math.min(
+                eventTicketPage,
+                pages
+            );
+
+            const start =
+                (eventTicketPage - 1) *
+                EVENT_TICKETS_PER_PAGE;
+
+            if (filtered.length === 0) {
+                const message = document.createElement("p");
+
+                message.textContent = failed
+                    ? "No verified tickets match this filter; " +
+                      "some ticket checks failed."
+                    : "No available tickets match this filter.";
+
+                ticketList.appendChild(message);
+            }
+	
+		const ticketGrid = document.createElement("div");
+ticketGrid.className = "event-ticket-grid";
+ticketList.appendChild(ticketGrid);
+
+            // Display only the tickets on the current page.
+            for (const ticket of filtered.slice(
+                start,
+                start + EVENT_TICKETS_PER_PAGE
+            )) {
+                const ticketCard = document.createElement("div");
+                ticketCard.className = "ticket-card";
+
+                const title = document.createElement("h3");
+                title.textContent = "Ticket #" + ticket.id;
+
+                const status = document.createElement("p");
+
+                status.textContent = ticket.resale
+                    ? "Available for resale"
+                    : "Available for primary sale";
+
+                const price = document.createElement("p");
+
+                price.textContent =
+                    ethers.formatEther(ticket.price) +
+                    " TRUST";
+
+                const button = document.createElement("button");
+
+                button.textContent =
+                    "Buy Ticket #" + ticket.id;
+
+                const purchaseStatus = document.createElement("p");
+                purchaseStatus.className = "small-note";
+
+                button.addEventListener("click", async () => {
+                    if (busy) return;
+                    try {
+                        await requireCustomerForPurchase();
+                    } catch (error) {
+                        purchaseStatus.textContent = errorMessage(error);
+                        return;
+                    }
+
+                    if (!confirm(
+                        "Buy Ticket #" + ticket.id +
+                        " for " +
+                        ethers.formatEther(ticket.price) +
+                        " TRUST? Review the transaction in MetaMask."
+                    )) {
+                        return;
+                    }
+
+                    purchaseStatus.textContent =
+                        "Waiting for MetaMask...";
+
+                    try {
+                        await runTransaction(
+                            (
+                                ticket.resale
+                                    ? "Resale"
+                                    : "Primary"
+                            ) +
+                            " purchase of Ticket #" + ticket.id,
+
+                            writable => ticket.resale
+                                ? writable.buySecondaryTicket(
+                                    ticket.id,
+                                    { value: ticket.price }
+                                )
+                                : writable.buyPrimaryTicket(
+                                    ticket.id,
+                                    { value: ticket.price }
+                                )
+                        );
+
+                        const evidence =
+                            el("transactionEvidence").textContent;
+
+                        if (evidence.includes("Outcome: CONFIRMED")) {
+                            purchaseStatus.textContent =
+                                "Purchase successful!";
+
+                            await loadEventTickets();
+                            await loadMyTickets();
+
+                        } else {
+                            purchaseStatus.textContent =
+                                evidence.includes("Outcome: PENDING")
+                                    ? "Transaction pending..."
+                                    : "Purchase canceled or failed.";
+                        }
+
+                    } catch (error) {
+                        purchaseStatus.textContent =
+                            "Purchase failed: " +
+                            errorMessage(error);
+
+                        console.error(
+                            "Purchase failed:",
+                            error
+                        );
+                    }
+                });
+
+                if (issuerWalletRestricted) {
+                    const notice = document.createElement("p");
+                    notice.className = "small-note";
+                    notice.textContent = "Issuer view only — purchasing is unavailable.";
+                    ticketCard.append(title, status, price, notice);
+                } else {
+                    ticketCard.append(title, status, price, button, purchaseStatus);
+                }
+
+                ticketGrid.appendChild(ticketCard);
+            }
+
+            // Add pagination when more than 10 tickets match.
+            if (pages > 1) {
+                const nav = document.createElement("div");
+
+                nav.style.cssText =
+                    "display:flex;gap:12px;align-items:center;" +
+                    "flex-wrap:wrap;margin:12px 0";
+
+                const previous = document.createElement("button");
+                previous.textContent = "Previous";
+                previous.className = "secondary-button";
+                previous.disabled = eventTicketPage === 1;
+
+                previous.addEventListener("click", () => {
+                    eventTicketPage--;
+                    renderTickets();
+                });
+
+                const indicator = document.createElement("span");
+
+                indicator.textContent =
+                    "Page " + eventTicketPage +
+                    " of " + pages;
+
+                const next = document.createElement("button");
+                next.textContent = "Next";
+                next.className = "secondary-button";
+                next.disabled = eventTicketPage === pages;
+
+                next.addEventListener("click", () => {
+                    eventTicketPage++;
+                    renderTickets();
+                });
+
+                nav.append(
+                    previous,
+                    indicator,
+                    next
+                );
+
+                ticketList.appendChild(nav);
+            }
+        };
+
+        renderTickets();
+
+    } catch (error) {
+        if (version !== eventBrowserLoadVersion) {
+            return;
+        }
+
+        console.error(
+            "Could not load event tickets:",
+            error
+        );
+
+        ticketList.textContent =
+            "Could not check ticket availability. Please try again.";
+    }
+}
+
+async function loadMyTickets() {
+    const section = el("myTicketsSection");
+    const container = el("myTicketsContainer");
+    const redeemedSection = el("redeemedTicketsSection");
+    const redeemedContainer = el("redeemedTicketsContainer");
+    const redeemedCountLabel = el("redeemedTicketsCount");
+
+    // Issuer wallets manage inventory; only customer wallets use My Tickets.
+    if (!signer || issuerWalletRestricted || adminWalletRestricted) {
+        section.hidden = true;
+        container.textContent = "";
+        redeemedContainer.replaceChildren();
+        redeemedSection.hidden = true;
+        return;
+    }
+
+    section.hidden = false;
+    container.textContent = "Loading your tickets...";
+    redeemedSection.hidden = true;
+    redeemedContainer.replaceChildren();
+
+    try {
+        const walletAddress = await signer.getAddress();
+
+        if (!readProvider) {
+            readProvider = new ethers.JsonRpcProvider(DIDLAB_RPC, 252501);
+        }
+
+        const contract = new ethers.Contract(
+            CONTRACT_ADDRESS,
+            CONTRACT_ABI,
+            readProvider
+        );
+
+        const response = await fetch("/api/events");
+        if (!response.ok) {
+            throw new Error("Could not load events.");
+        }
+
+        const data = await response.json();
+        container.replaceChildren();
+        redeemedContainer.replaceChildren();
+
+        let ownedCount = 0;
+        let activeCount = 0;
+        let redeemedCount = 0;
+
+        for (const event of data.events) {
+    const ticketIds = Array.isArray(event.ticketIds)
+        ? event.ticketIds
+        : [];
+
+    for (let offset = 0; offset < ticketIds.length; offset += 8) {
+        const batch = ticketIds.slice(offset, offset + 8);
+
+        const results = await Promise.all(
+            batch.map(async ticketId => {
+                try {
+                    const ticket = await contract.ticketInfo(ticketId);
+                    return { ticketId, ticket };
+                } catch (error) {
+                    console.error(
+                        "Could not load ticket #" + ticketId,
+                        error
+                    );
+                    return null;
+                }
+            })
+        );
+
+        for (const result of results.filter(Boolean)) {
+            const { ticketId, ticket } = result;
+
+                const isOwner =
+    ticket[0].toLowerCase() === walletAddress.toLowerCase();
+
+const isSeller =
+    ticket[4].toLowerCase() === walletAddress.toLowerCase();
+
+if (!isOwner && !isSeller) {
+    continue;
+}
+
+                ownedCount++;
+
+                const card = document.createElement("div");
+                card.className = "ticket-card";
+
+                const title = document.createElement("h3");
+                title.textContent = event.name;
+
+                const details = document.createElement("p");
+                details.textContent = "Ticket #" + ticketId;
+
+                const status = document.createElement("p");
+status.textContent = ticket[6]
+    ? "Redeemed"
+    : isSeller
+        ? "Listed for resale: " + ethers.formatEther(ticket[5]) + " TRUST"
+        : "Owned by you";
+
+card.append(title, details, status);
+
+// Display the ticket's details.
+const viewButton = document.createElement("button");
+viewButton.textContent = "View Ticket";
+viewButton.className = "secondary-button";
+
+const ticketDetails = document.createElement("div");
+ticketDetails.className = "details";
+ticketDetails.hidden = true;
+
+const ticketInfo = document.createElement("div");
+
+const eventDate = new Date(event.date + "T12:00:00")
+    .toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric"
+    });
+
+ticketInfo.className = "digital-ticket";
+
+const ticketHeader = document.createElement("div");
+ticketHeader.className = "digital-ticket-header";
+ticketHeader.textContent = "TEAMGOO DIGITAL TICKET";
+
+const eventTitle = document.createElement("h3");
+eventTitle.textContent = event.name;
+
+const eventDetails = document.createElement("p");
+eventDetails.textContent = eventDate + " • " + event.venue;
+
+const ticketNumber = document.createElement("p");
+ticketNumber.textContent = "Ticket #" + ticketId;
+
+const ticketStatusLabel = document.createElement("p");
+ticketStatusLabel.textContent = status.textContent;
+
+const ownerLabel = document.createElement("p");
+ownerLabel.className = "small-note";
+ownerLabel.textContent = "Wallet: " + walletAddress;
+
+ticketInfo.append(
+    ticketHeader,
+    eventTitle,
+    eventDetails,
+    ticketNumber,
+    ticketStatusLabel,
+    ownerLabel
+);
+const explorerLink = document.createElement("a");
+explorerLink.href =
+    "https://explorer.didlab.org/address/" + CONTRACT_ADDRESS;
+explorerLink.target = "_blank";
+explorerLink.rel = "noopener noreferrer";
+explorerLink.textContent = "View Contract on DIDLab Explorer";
+
+// Admission codes are private: require a wallet signature and a fresh on-chain ownership check.
+if (isOwner && !isSeller && !ticket[6]) {
+    const admissionButton = document.createElement("button");
+    admissionButton.type = "button";
+    admissionButton.className = "secondary-button";
+    admissionButton.textContent = "Show Admission Code";
+    const admissionOutput = document.createElement("p");
+    admissionOutput.className = "status";
+    admissionButton.addEventListener("click", async () => {
+        admissionButton.disabled = true;
+        admissionOutput.textContent = "Authenticating ticket owner...";
+        try {
+            const token = await authenticateTicketHolder();
+            const response = await fetch("/api/admission/" + encodeURIComponent(String(ticketId)), {
+                headers: { "Authorization": "Bearer " + token },
+                cache: "no-store"
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "Could not retrieve admission code.");
+            admissionOutput.textContent = "Admission code: " + data.admissionCode + " — Keep this private. It changes after any ticket transfer.";
+        } catch (error) {
+            admissionOutput.textContent = "Admission code unavailable: " + errorMessage(error);
+        } finally {
+            admissionButton.disabled = false;
+        }
+    });
+    ticketInfo.append(admissionButton, admissionOutput);
+}
+ticketDetails.append(ticketInfo, explorerLink);
+
+viewButton.addEventListener("click", () => {
+    ticketDetails.hidden = !ticketDetails.hidden;
+    viewButton.textContent = ticketDetails.hidden
+        ? "View Ticket"
+        : "Hide Ticket";
+});
+
+card.append(viewButton, ticketDetails);
+
+// Only unredeemed tickets can be listed for resale.
+if (!ticket[6] && isOwner && !isSeller) {
+    const resaleButton = document.createElement("button");
+resaleButton.textContent = "List for Resale";
+resaleButton.className = "secondary-button";
+
+resaleButton.addEventListener("click", async () => {
+    const priceInput = prompt(
+        "Enter the resale price for Ticket #" + ticketId + " in TRUST:"
+    );
+
+    if (priceInput === null) {
+        return;
+    }
+
+    try {
+        const price = ethers.parseEther(priceInput.trim());
+
+        if (price <= 0n) {
+            alert("Please enter a price greater than zero.");
+            return;
+        }
+
+        const confirmed = confirm(
+    "List Ticket #" + ticketId +
+    " for " + ethers.formatEther(price) +
+    " TRUST? You will need to approve the transaction in MetaMask."
+);
+
+if (!confirmed) {
+    return;
+}
+
+await runTransaction(
+    "List Ticket #" + ticketId + " for resale",
+    contract => contract.listTicket(ticketId, price)
+);
+
+const evidence = el("transactionEvidence").textContent;
+
+if (evidence.includes("Outcome: CONFIRMED")) {
+    alert("Ticket #" + ticketId + " successfully listed for resale!");
+
+    await loadEventTickets();
+    await loadMyTickets();
+}
+
+    } catch (error) {
+        alert("Invalid price. Please enter a valid number.");
+    }
+});
+
+card.appendChild(resaleButton);
+}
+// Allow sellers to cancel their resale listings.
+if (isSeller && !ticket[6]) {
+    const cancelButton = document.createElement("button");
+    cancelButton.textContent = "Cancel Resale Listing";
+    cancelButton.className = "secondary-button";
+
+    cancelButton.addEventListener("click", async () => {
+        const confirmed = confirm(
+            "Cancel the resale listing for Ticket #" + ticketId + "?"
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        await runTransaction(
+            "Cancel resale listing for Ticket #" + ticketId,
+            contract => contract.cancelListing(ticketId)
+        );
+
+        const evidence = el("transactionEvidence").textContent;
+
+        if (evidence.includes("Outcome: CONFIRMED")) {
+            alert("Resale listing canceled successfully!");
+
+            await loadEventTickets();
+            await loadMyTickets();
+        }
+    });
+
+    card.appendChild(cancelButton);
+}
+
+if (ticket[6]) {
+    redeemedContainer.appendChild(card);
+    redeemedCount++;
+} else {
+    container.appendChild(card);
+    activeCount++;
+}
+            }
+        }
+    }
+
+        redeemedCountLabel.textContent = String(redeemedCount);
+        redeemedSection.hidden = redeemedCount === 0;
+        if (activeCount === 0) {
+            container.textContent = ownedCount === 0
+                ? "You don't own any tickets yet."
+                : "No active tickets. Your redeemed tickets are available below.";
+        }
+
+    } catch (error) {
+        container.textContent = "Could not load your tickets.";
+        redeemedSection.hidden = true;
+        console.error("My Tickets error:", error);
+    }
+}
+		
+async function getMintedTicketIds() {
+    if (!readProvider) {
+        readProvider = new ethers.JsonRpcProvider(DIDLAB_RPC, 252501);
+    }
+
+    const contract = new ethers.Contract(
+        CONTRACT_ADDRESS,
+        CONTRACT_ABI,
+        readProvider
+    );
+
+    // Find all TicketMinted events on the deployed contract.
+    const filter = contract.filters.TicketMinted();
+    const latestBlock = await readProvider.getBlockNumber();
+
+    // Query in smaller batches to avoid RPC range limits.
+    const batchSize = 2000;
+    const ticketIds = new Set();
+
+    for (let fromBlock = 6361910; fromBlock <= latestBlock; fromBlock += batchSize) {
+        const toBlock = Math.min(
+            fromBlock + batchSize - 1,
+            latestBlock
+        );
+
+	console.log("Scanning blocks:", fromBlock, "to", toBlock);
+
+        const events = await contract.queryFilter(
+            filter,
+            fromBlock,
+            toBlock
+        );
+
+        for (const event of events) {
+            ticketIds.add(event.args.tokenId.toString());
+        }
+    }
+
+    return [...ticketIds].sort(
+        (a, b) => (BigInt(a) < BigInt(b) ? -1 : BigInt(a) > BigInt(b) ? 1 : 0)
+    );
+}
+
 
 		function setActionStatus(message) {
 		el("actionStatus").textContent = message;
@@ -414,6 +1980,8 @@
 
 		function clearWallet(message) {
 		signer = null;
+        issuerWalletRestricted = false;
+        adminWalletRestricted = false;
 		browserProvider = null;
 		el("walletStatus").textContent = message;
 		el("adminDashboard").hidden = true;
@@ -485,6 +2053,7 @@
 		await loadTicket();
 		await updateAdminDashboard();
 		await updateIssuerDashboard();
+		await loadMyTickets();
 
 		} catch (error) {
 		clearWallet("Wallet connection failed: " + errorMessage(error));
@@ -500,6 +2069,7 @@
 	async function updateAdminDashboard() {
 		const dashboard = el("adminDashboard");
 
+        adminWalletRestricted = false;
 		dashboard.hidden = true;
 
 		if (!signer || !(await checkNetwork())) {
@@ -526,8 +2096,11 @@
 				return;
 			}
 
+            adminWalletRestricted = true;
+            el("myTicketsSection").hidden = true;
 			dashboard.hidden = false;
 			el("adminAddress").textContent = connectedAddress;
+			await loadRegisteredOrganizations();
 
 			const issuerAddress = el("issuerAddress").value.trim();
 
@@ -556,6 +2129,141 @@
 }
 
 
+async function createNewEvent() {
+    const button = el("createEventButton");
+    const status = el("createEventStatus");
+
+    const name = el("newEventName").value.trim();
+    const description = el("newEventDescription").value.trim();
+    const venue = el("newEventVenue").value.trim();
+    const eventDate = el("newEventDate").value;
+
+    if (name.length < 2 || name.length > 150) {
+        status.textContent = "Enter an event name between 2 and 150 characters.";
+        return;
+    }
+
+    if (venue.length < 2 || venue.length > 200) {
+        status.textContent = "Enter a venue between 2 and 200 characters.";
+        return;
+    }
+
+    if (!eventDate) {
+        status.textContent = "Select an event date.";
+        return;
+    }
+
+    if (!signer || !(await checkNetwork())) {
+        status.textContent = "Connect your issuer wallet on DIDLab first.";
+        return;
+    }
+
+    button.disabled = true;
+
+    try {
+        const issuerAddress = await signer.getAddress();
+
+        status.textContent = "Requesting issuer authentication...";
+
+        const challengeResponse = await fetch("/api/issuer/challenge", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                address: issuerAddress
+            })
+        });
+
+        const challenge = await challengeResponse.json();
+
+        if (!challengeResponse.ok) {
+            throw new Error(
+                challenge.error || "Could not request authentication."
+            );
+        }
+
+        status.textContent = "Sign the login message in MetaMask.";
+
+        const signature = await signer.signMessage(challenge.message);
+
+        status.textContent = "Verifying issuer permissions...";
+
+        const loginResponse = await fetch("/api/issuer/login", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                nonce: challenge.nonce,
+                signature: signature
+            })
+        });
+
+        const login = await loginResponse.json();
+
+        if (!loginResponse.ok) {
+            throw new Error(
+                login.error || "Issuer authentication failed."
+            );
+        }
+
+        status.textContent = "Saving event...";
+
+        const eventResponse = await fetch("/api/events", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + login.token
+            },
+            body: JSON.stringify({
+                name,
+                description,
+                venue,
+                eventDate
+            })
+        });
+
+        const result = await eventResponse.json();
+
+        if (!eventResponse.ok) {
+            throw new Error(
+                result.error || "Could not create event."
+            );
+        }
+
+        status.textContent =
+            "Success! Event #" + result.event.id +
+            " (" + result.event.name + ") created for " +
+            result.event.organizationName + ".";
+
+        el("newEventName").value = "";
+        el("newEventDescription").value = "";
+        el("newEventVenue").value = "";
+        el("newEventDate").value = "";
+
+        console.log("Event created:", result.event);
+	await loadEventTickets();
+
+    } catch (error) {
+        status.textContent = transactionRejected(error)
+            ? "MetaMask signature rejected."
+            : "Event creation failed: " + errorMessage(error);
+
+        console.error("Create event error:", error);
+
+    } finally {
+        button.disabled = false;
+    }
+}
+
+el("createEventButton").addEventListener(
+    "click",
+    createNewEvent
+);
+
+
+
 
 async function updateIssuerDashboard() {
     const dashboard = el("issuerDashboard");
@@ -580,10 +2288,25 @@ async function updateIssuerDashboard() {
 
         const connectedAddress = await signer.getAddress();
 
+        // The contract owner is a service provider, never an event issuer.
+        const owner = await contract.owner();
+        if (owner.toLowerCase() === connectedAddress.toLowerCase()) {
+            adminWalletRestricted = true;
+            issuerWalletRestricted = true;
+            el("myTicketsSection").hidden = true;
+            if (expandedEventId !== null) await loadEventTickets();
+            return;
+        }
+
         const authorized = await contract.authorizedIssuers(
             connectedAddress
         );
 
+        issuerWalletRestricted = authorized;
+        if (authorized) {
+            el("myTicketsSection").hidden = true;
+        }
+        if (expandedEventId !== null) await loadEventTickets();
         if (!authorized) {
             return;
         }
@@ -596,8 +2319,47 @@ async function updateIssuerDashboard() {
         el("issuerAuthorizationStatus").textContent =
             "Status: Authorized issuer";
 
+        const organizationLabel = el("issuerOrganizationName");
+
+        organizationLabel.textContent =
+            "Looking up organization...";
+
+        try {
+            const response = await fetch("/api/organizations");
+
+            if (!response.ok) {
+                throw new Error("Could not retrieve organizations.");
+            }
+
+            const data = await response.json();
+
+            const organization = data.organizations.find(
+                org => org.wallet_address.toLowerCase() ===
+                    connectedAddress.toLowerCase()
+            );
+
+            if (organization) {
+                organizationLabel.textContent =
+                    "Connected organization: " + organization.name;
+
+                // Load events belonging to this issuer's organization.
+                await loadIssuerEvents();
+
+            } else {
+                organizationLabel.textContent =
+                    "No registered organization found for this wallet. " +
+                    "Ask the administrator to register it first.";
+            }
+
+        } catch (error) {
+            organizationLabel.textContent =
+                "Could not load organization: " + errorMessage(error);
+
+            console.error("Organization lookup error:", error);
+        }
+
     } catch (error) {
-        el("mintStatus").textContent =
+        el("bulkMintStatus").textContent =
             "Issuer check failed: " + errorMessage(error);
 
         console.error("Issuer dashboard error:", error);
@@ -750,10 +2512,12 @@ async function updateIssuerDashboard() {
 		);
 
 		const canBuyPrimary = Boolean(
+        !issuerWalletRestricted &&
 		t && connected && !t.redeemed &&
 		t.primaryListed && inEscrow && !secondaryListed
 		);
 		const canBuySecondary = Boolean(
+        !issuerWalletRestricted &&
 		t && connected && !t.redeemed &&
 		secondaryListed && t.secondarySeller.toLowerCase() !== address
 		);
@@ -774,6 +2538,8 @@ async function updateIssuerDashboard() {
 		setActionStatus("Connect MetaMask on DIDLab to use ticket actions.");
 		} else if (!t) {
 		setActionStatus("Ticket data is unavailable. Refresh and try again.");
+        } else if (issuerWalletRestricted) {
+        setActionStatus("Issuer view only — ticket purchasing is unavailable.");
 		} else if (t.redeemed) {
 		setActionStatus("This ticket has been redeemed; purchase and resale actions are disabled.");
 		} else if (canBuyPrimary) {
@@ -859,12 +2625,16 @@ async function runTransaction(label, action) {
         ]);
 
         if (receipt.status !== 1) {
-            setActionStatus(label + " reverted on-chain.");
-            await loadTicket();
-            return;
-        }
+    setActionStatus(label + " reverted on-chain.");
+    await loadTicket();
+    return;
+}
 
-        await loadTicket();
+// Blockchain state changed.
+// Discard previously cached ticket availability.
+clearEventTicketCache();
+
+await loadTicket();
 
         setActionStatus(
             label + " confirmed! Ticket information refreshed from blockchain."
@@ -934,88 +2704,380 @@ async function runTransaction(label, action) {
 }
 
 
-async function mintNewTicket() {
-    if (busy) return;
+async function loadIssuerEvents() {
+    const bulkSelect = el("bulkEventId");
 
-    const tokenIdInput = el("mintTokenId").value.trim();
-    const priceInput = el("mintPrice").value.trim();
+    if (!bulkSelect) return;
+
+    const previousBulk = bulkSelect.value;
+
+    bulkSelect.replaceChildren(new Option("Loading events...", ""));
 
     try {
-        if (!/^[1-9]\d*$/.test(tokenIdInput)) {
-            throw new Error("Enter a positive whole-number ticket ID.");
+        if (!signer) {
+            throw new Error("Connect an issuer wallet first.");
         }
 
-        const tokenId = BigInt(tokenIdInput);
+        const address = (await signer.getAddress()).toLowerCase();
 
-        if (!priceInput || !Number.isFinite(Number(priceInput)) ||
-            Number(priceInput) <= 0) {
-            throw new Error("Enter a ticket price greater than zero.");
+        const [orgResponse, eventsResponse] = await Promise.all([
+            fetch("/api/organizations"),
+            fetch("/api/events")
+        ]);
+
+        if (!orgResponse.ok || !eventsResponse.ok) {
+            throw new Error("Could not load organizations or events.");
         }
 
-        const price = ethers.parseEther(priceInput);
+        const orgData = await orgResponse.json();
+        const eventData = await eventsResponse.json();
 
-        if (price <= 0n) {
-            throw new Error("Ticket price must be greater than zero.");
-        }
-
-        if (!confirm(
-            "Mint Ticket #" + tokenId +
-            " for " + priceInput +
-            " TRUST? This will create a new primary listing."
-        )) {
-            return;
-        }
-
-        busy = true;
-        el("mintTicketButton").disabled = true;
-
-        const contract = await getWritableContract();
-        const connectedAddress = await signer.getAddress();
-
-        const authorized = await contract.authorizedIssuers(
-            connectedAddress
+        const organization = orgData.organizations.find(
+            org => org.wallet_address.toLowerCase() === address
         );
 
-        if (!authorized) {
-            throw new Error("This wallet is not an authorized issuer.");
+        if (!organization) {
+            throw new Error("This wallet has no registered organization.");
         }
 
-        el("mintStatus").textContent =
-            "Confirm the mint transaction in MetaMask.";
+        const events = eventData.events.filter(
+            event => Number(event.organization_id) ===
+                Number(organization.id)
+        );
 
-        const tx = await contract.mintTicket(tokenId, price);
+        // Fall back to the organization's name only if the API
+        // does not yet expose organization_id.
+        const matchingEvents = eventData.events.filter(
+            event => Number(event.organization_id) ===
+                Number(organization.id)
+        );
 
-        el("mintStatus").textContent =
-            "Mint transaction pending: " + tx.hash;
-
-        const receipt = await tx.wait();
-
-        if (!receipt || receipt.status !== 1) {
-            throw new Error("Mint transaction was not confirmed.");
+        // If the backend has not yet added organization_id,
+        // do not guess ownership based on a display name.
+        if (eventData.events.length &&
+            eventData.events.some(event => event.organization_id == null)) {
+            throw new Error(
+                "The events API must return organization_id. " +
+                "Update GET /api/events in server.js."
+            );
         }
 
-        el("mintStatus").textContent =
-            "Ticket #" + tokenId +
-            " minted successfully! Transaction: " + tx.hash;
+        const options = matchingEvents.map(event => ({
+            value: String(event.id),
+            text: event.name + " (Event #" + event.id + ")"
+        }));
 
-        el("mintTokenId").value = "";
-        el("mintPrice").value = "";
+        for (const select of [bulkSelect]) {
+            select.replaceChildren(
+                new Option("Select an event...", "")
+            );
+
+            for (const option of options) {
+                select.add(new Option(option.text, option.value));
+            }
+        }
+
+        if (options.some(option => option.value === previousBulk)) {
+            bulkSelect.value = previousBulk;
+        }
+
+        if (options.length === 0) {
+            bulkSelect.options[0].text = "Create an event first";
+        }
 
     } catch (error) {
-        el("mintStatus").textContent =
-            transactionRejected(error)
-                ? "Mint transaction rejected in MetaMask."
-                : "Mint failed: " + errorMessage(error);
+        const message = "Events unavailable: " + errorMessage(error);
 
-        console.error("Mint ticket error:", error);
+        bulkSelect.replaceChildren(new Option(message, ""));
 
-    } finally {
-        busy = false;
-        el("mintTicketButton").disabled = false;
+        console.error("Issuer event loading error:", error);
     }
 }
 
-el("mintTicketButton").addEventListener("click", mintNewTicket);
+async function authenticateIssuer() {
+    if (!signer || !(await checkNetwork())) {
+        throw new Error("Connect your issuer wallet on DIDLab.");
+    }
+
+    const address = await signer.getAddress();
+
+    const challengeResponse = await fetch("/api/issuer/challenge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address })
+    });
+
+    const challenge = await challengeResponse.json();
+
+    if (!challengeResponse.ok) {
+        throw new Error(challenge.error || "Issuer challenge failed.");
+    }
+
+    const signature = await signer.signMessage(challenge.message);
+
+    const loginResponse = await fetch("/api/issuer/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            nonce: challenge.nonce,
+            signature
+        })
+    });
+
+    const login = await loginResponse.json();
+
+    if (!loginResponse.ok) {
+        throw new Error(login.error || "Issuer login failed.");
+    }
+
+    return {
+        token: login.token,
+        address
+    };
+}
+
+async function linkMintedTicket(eventId, ticketId, transactionHash, token) {
+    const response = await fetch(
+        "/api/events/" + encodeURIComponent(eventId) + "/tickets",
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + token
+            },
+            body: JSON.stringify({
+                ticketId: String(ticketId),
+                transactionHash
+            })
+        }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+        throw new Error(
+            result.error || "Could not associate ticket with event."
+        );
+    }
+
+    return result;
+}
+
+
+
+
+
+window.recoverTicket101 = async function () {
+    try {
+        const issuerSession = await authenticateIssuer();
+
+        const result = await linkMintedTicket(
+            "1",
+            "101",
+            "0x55cee74e95c9cdd1db4e5f5775d02330a3364ee5c5e5fc5e183dc85703b95c68",
+            issuerSession.token
+        );
+
+        console.log("Recovery result:", result);
+
+        await loadEventTickets();
+        await loadMyTickets();
+
+        alert("Ticket #101 successfully linked to Test Concert!");
+
+    } catch (error) {
+        console.error("Recovery failed:", error);
+        alert("Recovery failed: " + errorMessage(error));
+    }
+};
+
+
+
+
+async function reserveAutomaticTicketIds(eventId, quantity, token) {
+    const response = await fetch("/api/ticket-ids/reserve", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify({ eventId: Number(eventId), quantity })
+    });
+    const result = await response.json();
+    if (!response.ok || !Array.isArray(result.ticketIds) ||
+        result.ticketIds.length !== quantity) {
+        throw new Error(result.error || "Could not reserve ticket IDs.");
+    }
+    return result.ticketIds;
+}
+
+// One shared minting flow for quantities from 1 to 10.
+// The backend reserves IDs, and the contract mints one ticket per transaction.
+async function bulkMintTickets() {
+    if (busy) return;
+
+    const eventId = el("bulkEventId").value;
+    const countText = el("bulkCount").value.trim();
+    const priceText = el("bulkPrice").value.trim();
+    const status = el("bulkMintStatus");
+
+    if (!eventId) {
+        status.textContent = "Select an event first.";
+        return;
+    }
+
+    if (!/^[1-9]\d*$/.test(countText) ||
+        Number(countText) > 10) {
+        status.textContent =
+            "Enter a ticket count from 1 to 10.";
+        return;
+    }
+
+    let price;
+    try {
+        price = ethers.parseEther(priceText);
+        if (price <= 0n) {
+            throw new Error("Price must be greater than zero.");
+        }
+    } catch (_) {
+        status.textContent = "Enter a valid positive price in TRUST.";
+        return;
+    }
+
+    const count = Number(countText);
+
+    if (!confirm(
+        "Mint " + count + " tickets for the selected event at " +
+        ethers.formatEther(price) + " TRUST each? " +
+        "MetaMask will request one transaction approval per ticket."
+    )) {
+        return;
+    }
+
+    busy = true;
+    el("bulkMintButton").disabled = true;
+
+    let minted = 0;
+    let linked = 0;
+    const mintedIds = [];
+    const unlinkedTickets = [];
+
+    try {
+        const contract = await getWritableContract();
+        const address = await signer.getAddress();
+
+        if (!(await contract.authorizedIssuers(address))) {
+            throw new Error("This wallet is not an authorized issuer.");
+        }
+
+        status.textContent = "Authenticating issuer wallet...";
+        const issuerSession = await authenticateIssuer();
+        status.textContent = "Reserving " + count + " ticket IDs...";
+        const reservedIds = await reserveAutomaticTicketIds(eventId, count, issuerSession.token);
+
+        for (let i = 0; i < count; i++) {
+            const id = BigInt(reservedIds[i]);
+
+            status.textContent =
+                "Ticket " + (i + 1) + " of " + count +
+                " (#" + id + "): confirm mint in MetaMask...";
+
+            const tx = await contract.mintTicket(id, price);
+
+            status.textContent =
+                "Ticket #" + id + ": waiting for blockchain confirmation...";
+
+            const receipt = await tx.wait();
+
+            if (!receipt || receipt.status !== 1) {
+                throw new Error(
+                    "Ticket #" + id + " was not confirmed."
+                );
+            }
+
+            minted++;
+            mintedIds.push(id.toString());
+	clearEventTicketCache();
+
+            status.textContent =
+                "Ticket #" + id +
+                " minted. Associating with selected event...";
+
+            try {
+                await linkMintedTicket(
+                    eventId,
+                    id.toString(),
+                    tx.hash,
+                    issuerSession.token
+                );
+
+                linked++;
+            } catch (linkError) {
+                unlinkedTickets.push({
+                    ticketId: id.toString(),
+                    transactionHash: tx.hash
+                });
+
+                console.error(
+                    "Ticket #" + id + " was minted but not linked:",
+                    linkError
+                );
+
+                throw new Error(
+                    "Ticket #" + id +
+                    " was minted, but event linking failed: " +
+                    errorMessage(linkError)
+                );
+            }
+
+            status.textContent =
+                linked + " of " + count +
+                " tickets minted and linked successfully.";
+        }
+
+        status.textContent =
+            "Success! All " + linked +
+            " tickets were minted and linked to the selected event. Ticket IDs: " +
+            mintedIds.map(id => "#" + id).join(", ") + ".";
+
+        el("bulkCount").value = "1";
+        el("bulkPrice").value = "";
+
+    } catch (error) {
+        status.textContent =
+            "Stopped. " + minted + " minted, " +
+            linked + " linked. " +
+            (mintedIds.length ? "Minted IDs: " + mintedIds.map(id => "#" + id).join(", ") + ". " : "") +
+            (transactionRejected(error)
+                ? "MetaMask approval rejected."
+                : errorMessage(error)) +
+            " Do not mint already-confirmed ticket IDs again.";
+
+        console.error("Bulk mint error:", error);
+
+        if (unlinkedTickets.length > 0) {
+            console.error(
+                "Tickets requiring event-link recovery:",
+                unlinkedTickets
+            );
+        }
+    } finally {
+        busy = false;
+        el("bulkMintButton").disabled = false;
+    
+        try {
+            await loadIssuerEvents();
+            await loadEventTickets();
+            await loadMyTickets();
+        } catch (refreshError) {
+            console.error("Ticket refresh failed:", refreshError);
+        }
+    }
+}
+
+el("bulkMintButton").addEventListener("click", bulkMintTickets);
+
+
 
 
 
@@ -1067,7 +3129,12 @@ async function changeIssuerAuthorization(authorized) {
         }
 
         el("adminActionStatus").textContent =
-            action + " successful! Transaction: " + tx.hash;
+    action + " successful! Transaction: " + tx.hash;
+
+el("organizationName").value = "";
+el("issuerAddress").value = "";
+el("issuerStatus").textContent =
+    "Enter an issuer wallet address to check authorization.";
 
     } catch (error) {
         el("adminActionStatus").textContent =
@@ -1083,6 +3150,365 @@ async function changeIssuerAuthorization(authorized) {
     }
 }
 
+
+async function registerOrganization() {
+    const button = el("registerOrganizationButton");
+    const status = el("organizationRegistrationStatus");
+
+    const name = el("organizationName").value.trim();
+    const issuerAddress = el("issuerAddress").value.trim();
+
+    if (name.length < 2 || name.length > 100) {
+        status.textContent =
+            "Enter an organization name between 2 and 100 characters.";
+        return;
+    }
+
+    if (!ethers.isAddress(issuerAddress)) {
+        status.textContent = "Enter a valid issuer wallet address.";
+        return;
+    }
+
+    if (!signer || !(await checkNetwork())) {
+        status.textContent =
+            "Connect the administrator wallet on DIDLab first.";
+        return;
+    }
+
+    button.disabled = true;
+
+    try {
+        const adminAddress = await signer.getAddress();
+
+        // Confirm the connected wallet is the contract administrator.
+        const contract = new ethers.Contract(
+            CONTRACT_ADDRESS,
+            CONTRACT_ABI,
+            readProvider || new ethers.JsonRpcProvider(
+                DIDLAB_RPC, 252501
+            )
+        );
+
+        const owner = await contract.owner();
+
+        if (owner.toLowerCase() !== adminAddress.toLowerCase()) {
+            throw new Error(
+                "Only the contract administrator can register organizations."
+            );
+        }
+
+        status.textContent = "Requesting administrator login...";
+
+        // Request a one-time authentication challenge.
+        const challengeResponse = await fetch(
+            "/api/admin/challenge",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    address: adminAddress
+                })
+            }
+        );
+
+        const challenge = await challengeResponse.json();
+
+        if (!challengeResponse.ok) {
+            throw new Error(
+                challenge.error || "Could not request login challenge."
+            );
+        }
+
+        // MetaMask signs a message, not a blockchain transaction.
+        status.textContent = "Sign the login message in MetaMask.";
+
+        const signature = await signer.signMessage(challenge.message);
+
+        status.textContent = "Verifying administrator signature...";
+
+        const loginResponse = await fetch(
+            "/api/admin/login",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    nonce: challenge.nonce,
+                    signature: signature
+                })
+            }
+        );
+
+        const login = await loginResponse.json();
+
+        if (!loginResponse.ok) {
+            throw new Error(
+                login.error || "Administrator login failed."
+            );
+        }
+
+        // Register the organization using the verified session.
+        status.textContent = "Saving organization to database...";
+
+        const registrationResponse = await fetch(
+            "/api/organizations",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + login.token
+                },
+                body: JSON.stringify({
+                    name: name,
+                    walletAddress: issuerAddress
+                })
+            }
+        );
+
+        const result = await registrationResponse.json();
+
+        if (!registrationResponse.ok) {
+            throw new Error(
+                result.error || "Organization registration failed."
+            );
+        }
+
+        status.textContent =
+            "Success! " + name +
+            " is now registered to " + issuerAddress;
+
+        el("organizationName").value = "";
+el("issuerAddress").value = "";
+el("issuerStatus").textContent =
+    "Enter an issuer wallet address to check authorization.";
+
+await loadRegisteredOrganizations();
+
+        console.log("Organization registered:", result);
+
+    } catch (error) {
+        status.textContent =
+            transactionRejected(error)
+                ? "MetaMask signature rejected."
+                : "Registration failed: " + errorMessage(error);
+
+        console.error("Organization registration error:", error);
+
+    } finally {
+        button.disabled = false;
+    }
+}
+
+// Add an issuer in two explicit stages: on-chain permission, then database registration.
+async function addNewIssuer() {
+    const status = el("organizationRegistrationStatus");
+    const name = el("organizationName").value.trim();
+    const address = el("issuerAddress").value.trim();
+    const button = el("registerOrganizationButton");
+
+    if (name.length < 2 || name.length > 100) {
+        status.textContent = "Enter an organization name between 2 and 100 characters.";
+        return;
+    }
+    if (!ethers.isAddress(address)) {
+        status.textContent = "Enter a valid issuer wallet address.";
+        return;
+    }
+    if (!signer || !(await checkNetwork())) {
+        status.textContent = "Connect the administrator wallet on DIDLab first.";
+        return;
+    }
+
+    button.disabled = true;
+    try {
+        const contract = await getWritableContract();
+        const owner = await contract.owner();
+        const connected = await signer.getAddress();
+        if (owner.toLowerCase() !== connected.toLowerCase()) {
+            throw new Error("Only the contract administrator can add issuers.");
+        }
+        let authorized = await contract.authorizedIssuers(address);
+        if (!authorized) {
+            status.textContent = "Step 1 of 2: Confirm issuer authorization in MetaMask...";
+            const tx = await contract.setIssuer(address, true);
+            status.textContent = "Waiting for DIDLab to confirm authorization: " + tx.hash;
+            const receipt = await tx.wait();
+            if (!receipt || receipt.status !== 1) {
+                throw new Error("Issuer authorization transaction failed.");
+            }
+            authorized = await contract.authorizedIssuers(address);
+            if (!authorized) throw new Error("Issuer authorization was not confirmed on-chain.");
+        }
+        status.textContent = "Step 2 of 2: Registering the organization. Please sign the login message...";
+        await registerOrganization();
+        await updateAdminDashboard();
+    } catch (error) {
+        status.textContent = transactionRejected(error)
+            ? "MetaMask request rejected. No new registration was made."
+            : "Could not add issuer: " + errorMessage(error);
+        console.error("Add issuer failed:", error);
+    } finally {
+        button.disabled = false;
+    }
+}
+
+// Manage redemption operators through the contract owner's MetaMask wallet.
+// Note: The contract's operator permission is global across all events.
+async function changeRedemptionOperator(authorized) {
+    const status = el("operatorManagementStatus");
+    const address = el("redemptionOperatorAddress").value.trim();
+    const authorizeButton = el("authorizeOperatorButton");
+    const revokeButton = el("revokeOperatorButton");
+
+    if (busy) {
+        status.textContent = "Another blockchain transaction is in progress.";
+        return;
+    }
+    if (!ethers.isAddress(address) || address === ethers.ZeroAddress) {
+        status.textContent = "Enter a valid nonzero operator wallet address.";
+        return;
+    }
+    if (!signer || !(await checkNetwork())) {
+        status.textContent = "Connect the administrator wallet on DIDLab first.";
+        return;
+    }
+
+    const action = authorized ? "Authorize" : "Revoke";
+    if (!confirm(action + " redemption operator " + address + "? This permission applies to tickets across the entire contract.")) return;
+
+    busy = true;
+    authorizeButton.disabled = true;
+    revokeButton.disabled = true;
+    try {
+        const contract = await getWritableContract();
+        const owner = await contract.owner();
+        const connected = await signer.getAddress();
+        if (owner.toLowerCase() !== connected.toLowerCase()) {
+            throw new Error("Only the contract owner can manage redemption operators.");
+        }
+        status.textContent = "Confirm " + action.toLowerCase() + " in MetaMask...";
+        const tx = await contract.setOperator(address, authorized);
+        status.textContent = "Waiting for DIDLab confirmation: " + tx.hash;
+        const receipt = await tx.wait();
+        if (!receipt || receipt.status !== 1) {
+            throw new Error("Operator permission transaction did not succeed.");
+        }
+        status.textContent = action + " successful. Transaction: " + tx.hash;
+        el("redemptionOperatorAddress").value = "";
+    } catch (error) {
+        status.textContent = transactionRejected(error)
+            ? "MetaMask transaction rejected. No permission change confirmed."
+            : action + " failed: " + errorMessage(error);
+        console.error("Redemption operator update failed:", error);
+    } finally {
+        busy = false;
+        authorizeButton.disabled = false;
+        revokeButton.disabled = false;
+    }
+}
+
+el("authorizeOperatorButton").addEventListener("click", () => changeRedemptionOperator(true));
+el("revokeOperatorButton").addEventListener("click", () => changeRedemptionOperator(false));
+
+el("registerOrganizationButton").addEventListener("click", addNewIssuer);
+
+
+async function loadRegisteredOrganizations() {
+    const activeContainer = el("organizationsList");
+    const revokedContainer = el("revokedOrganizationsList");
+    activeContainer.textContent = "Loading organizations...";
+    revokedContainer.textContent = "Checking authorization...";
+
+    try {
+        const response = await fetch("/api/organizations");
+        if (!response.ok) throw new Error("Could not retrieve organizations.");
+        const data = await response.json();
+        activeContainer.replaceChildren();
+        revokedContainer.replaceChildren();
+
+        if (!readProvider) {
+            readProvider = new ethers.JsonRpcProvider(DIDLAB_RPC, 252501);
+        }
+        const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, readProvider);
+        let activeCount = 0;
+        let revokedCount = 0;
+        let unknownCount = 0;
+
+        for (const organization of data.organizations) {
+            const card = document.createElement("div");
+            card.className = "ticket-card";
+            const name = document.createElement("h3");
+            name.textContent = organization.name;
+            const wallet = document.createElement("p");
+            wallet.className = "small-note";
+            wallet.textContent = "Wallet: " + organization.wallet_address;
+            const authorization = document.createElement("p");
+            let authorized = null;
+            try {
+                authorized = await contract.authorizedIssuers(organization.wallet_address);
+                authorization.textContent = authorized ? "Status: Authorized issuer" : "Status: Not authorized";
+                authorization.style.color = authorized ? "#176b37" : "#b42318";
+            } catch (error) {
+                authorization.textContent = "Status: Could not verify authorization";
+            }
+
+            const editButton = document.createElement("button");
+            editButton.className = "secondary-button";
+            editButton.textContent = "Edit Name";
+            editButton.addEventListener("click", () => {
+                el("issuerAddress").value = organization.wallet_address;
+                el("organizationName").value = organization.name;
+                el("organizationRegistrationStatus").textContent =
+                    "Editing " + organization.name + ". Change the name and click Add Issuer to save it.";
+                el("organizationName").focus();
+                el("issuerManagementPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+                updateAdminDashboard();
+            });
+            card.append(name, wallet, authorization, editButton);
+
+            if (authorized === false) {
+                revokedCount++;
+                const restoreButton = document.createElement("button");
+                restoreButton.className = "secondary-button";
+                restoreButton.textContent = "Reauthorize";
+                restoreButton.style.marginLeft = "8px";
+                restoreButton.addEventListener("click", async () => {
+                    el("issuerAddress").value = organization.wallet_address;
+                    el("organizationName").value = organization.name;
+                    el("issuerManagementPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+                    if (!confirm("Reauthorize " + organization.name + " on DIDLab?")) return;
+                    await changeIssuerAuthorization(true);
+                });
+                card.append(restoreButton);
+                revokedContainer.appendChild(card);
+            } else {
+                if (authorized === true) activeCount++;
+                else unknownCount++;
+                activeContainer.appendChild(card);
+            }
+        }
+        if (activeCount === 0 && unknownCount === 0) {
+            activeContainer.textContent = "No active organizations.";
+        }
+        if (revokedCount === 0) {
+            revokedContainer.textContent = "No revoked issuers.";
+        }
+    } catch (error) {
+        activeContainer.textContent = "Could not load organizations: " + errorMessage(error);
+        revokedContainer.textContent = "Could not load revoked issuers.";
+        console.error("Organization list error:", error);
+    }
+}
+
+el("refreshOrganizationsButton").addEventListener(
+    "click",
+    loadRegisteredOrganizations
+);
+
+
 el("authorizeIssuerButton").addEventListener("click", () => {
     changeIssuerAuthorization(true);
 });
@@ -1096,7 +3522,9 @@ el("issuerAddress").addEventListener("change", () => {
 });
 
 
-el("buyPrimaryButton").addEventListener("click", () => {
+el("buyPrimaryButton").addEventListener("click", async () => {
+        try { await requireCustomerForPurchase(); }
+        catch (error) { setActionStatus(errorMessage(error)); return; }
 		if (!ticketState) return;
 		const price = ticketState.primaryPrice;
 
@@ -1110,7 +3538,9 @@ el("buyPrimaryButton").addEventListener("click", () => {
 		);
 		});
 
-		el("buySecondaryButton").addEventListener("click", () => {
+		el("buySecondaryButton").addEventListener("click", async () => {
+        try { await requireCustomerForPurchase(); }
+        catch (error) { setActionStatus(errorMessage(error)); return; }
 		if (!ticketState) return;
 		const price = ticketState.secondaryPrice;
 
@@ -1251,9 +3681,172 @@ el("verifyTxButton").addEventListener("click", async () => {
     }
 });
 
+
 // Initial public read; the page does not require a connected wallet.
-		checkNetwork();
-		loadTicket();
-	</script>
+checkNetwork();
+loadTicket();
+
+// Load event information from events.json.
+loadEventTickets();
+
+
+// Admission code authentication and issuer redemption (Option A: MetaMask signs the on-chain transaction).
+let holderSession = null;
+let pendingRedemption = null;
+
+async function authenticateTicketHolder() {
+    if (!signer || !(await checkNetwork())) throw new Error("Connect your ticket-holder wallet on DIDLab.");
+    const address = await signer.getAddress();
+    if (holderSession && holderSession.address.toLowerCase() === address.toLowerCase() && holderSession.expiresAt > Date.now() + 30000) {
+        return holderSession.token;
+    }
+    const challengeResponse = await fetch("/api/holder/challenge", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address })
+    });
+    const challenge = await challengeResponse.json();
+    if (!challengeResponse.ok) throw new Error(challenge.error || "Could not request ticket-holder login.");
+    const signature = await signer.signMessage(challenge.message);
+    const loginResponse = await fetch("/api/holder/login", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nonce: challenge.nonce, signature })
+    });
+    const login = await loginResponse.json();
+    if (!loginResponse.ok) throw new Error(login.error || "Ticket-holder login failed.");
+    holderSession = { token: login.token, address, expiresAt: Date.now() + (login.expiresInSeconds || 3600) * 1000 };
+    return holderSession.token;
+}
+
+async function loadRedemptionEvents() {
+    const select = el("redemptionEventId");
+    if (!select || !signer || el("issuerDashboard").hidden) return;
+    const previous = select.value;
+    select.replaceChildren(new Option("Loading your events...", ""));
+    try {
+        const address = (await signer.getAddress()).toLowerCase();
+        const [orgResponse, eventsResponse] = await Promise.all([fetch("/api/organizations"), fetch("/api/events")]);
+        if (!orgResponse.ok || !eventsResponse.ok) throw new Error("Could not load events.");
+        const orgs = await orgResponse.json();
+        const eventData = await eventsResponse.json();
+        const org = orgs.organizations.find(o => o.wallet_address.toLowerCase() === address);
+        if (!org) throw new Error("Issuer organization not registered.");
+        select.replaceChildren(new Option("Select an event...", ""));
+        for (const event of eventData.events) {
+            if (Number(event.organization_id) === Number(org.id)) {
+                select.add(new Option(event.name + " (Event #" + event.id + ")", String(event.id)));
+            }
+        }
+        if ([...select.options].some(o => o.value === previous)) select.value = previous;
+    } catch (error) {
+        select.replaceChildren(new Option("Could not load events", ""));
+        el("redemptionVerificationResult").textContent = errorMessage(error);
+    }
+}
+
+function resetAdmissionVerification() {
+    pendingRedemption = null;
+    el("redeemAdmissionTicketButton").disabled = true;
+    el("redemptionTransactionStatus").textContent = "No ticket selected for redemption.";
+}
+
+el("redemptionEventId").addEventListener("change", resetAdmissionVerification);
+el("redemptionAdmissionCode").addEventListener("input", resetAdmissionVerification);
+
+el("verifyAdmissionCodeButton").addEventListener("click", async () => {
+    const status = el("redemptionVerificationResult");
+    const button = el("verifyAdmissionCodeButton");
+    resetAdmissionVerification();
+    const eventId = Number(el("redemptionEventId").value);
+    const admissionCode = el("redemptionAdmissionCode").value.trim().toUpperCase();
+    if (!Number.isSafeInteger(eventId) || eventId <= 0 || !/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/.test(admissionCode)) {
+        status.textContent = "Select an event and enter a code in XXXX-XXXX-XXXX format.";
+        return;
+    }
+    button.disabled = true;
+    status.textContent = "Authenticating issuer and verifying admission code on DIDLab...";
+    try {
+        const issuerSession = await authenticateIssuer();
+        const response = await fetch("/api/redemption/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + issuerSession.token },
+            body: JSON.stringify({ eventId, admissionCode }), cache: "no-store"
+        });
+        const result = await response.json();
+        if (!response.ok || result.valid !== true) throw new Error(result.error || "Admission code invalid.");
+        pendingRedemption = { ticketId: String(result.ticketId), eventId, admissionCode, issuerAddress: issuerSession.address };
+        status.textContent = "VALID — Ticket #" + result.ticketId + " for " + result.eventName + ". Confirm redemption below.";
+        el("redeemAdmissionTicketButton").disabled = false;
+    } catch (error) {
+        status.textContent = "Verification failed: " + errorMessage(error);
+    } finally {
+        button.disabled = false;
+    }
+});
+
+el("redeemAdmissionTicketButton").addEventListener("click", async () => {
+    if (busy || !pendingRedemption) return;
+    const candidate = { ...pendingRedemption };
+    const status = el("redemptionTransactionStatus");
+    const button = el("redeemAdmissionTicketButton");
+    button.disabled = true;
+    status.textContent = "Rechecking admission code before submitting transaction...";
+    try {
+        if (!signer || (await signer.getAddress()).toLowerCase() !== candidate.issuerAddress.toLowerCase()) {
+            throw new Error("Issuer wallet changed. Verify the admission code again.");
+        }
+        const issuerSession = await authenticateIssuer();
+        const response = await fetch("/api/redemption/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + issuerSession.token },
+            body: JSON.stringify({ eventId: candidate.eventId, admissionCode: candidate.admissionCode }), cache: "no-store"
+        });
+        const result = await response.json();
+        if (!response.ok || !result.valid || String(result.ticketId) !== candidate.ticketId) {
+            throw new Error(result.error || "Admission code is no longer valid. Verify again.");
+        }
+        if (!confirm("Redeem Ticket #" + candidate.ticketId + " on DIDLab? This cannot be undone.")) {
+            status.textContent = "Redemption canceled.";
+            return;
+        }
+        busy = true;
+        const writable = await getWritableContract();
+        if (!(await writable.authorizedOperators(await signer.getAddress()))) {
+            throw new Error("Your wallet is not an authorized redemption operator.");
+        }
+        status.textContent = "Confirm the redemption transaction in MetaMask...";
+        const tx = await writable.redeemTicket(BigInt(candidate.ticketId));
+        status.textContent = "Waiting for DIDLab confirmation: " + tx.hash;
+        const receipt = await tx.wait();
+        if (!receipt || receipt.status !== 1) throw new Error("Redemption transaction reverted or was not confirmed.");
+        showTransactionEvidence(["Outcome: CONFIRMED", "Action: Redeem Ticket #" + candidate.ticketId, "Transaction hash: " + tx.hash, "Block number: " + receipt.blockNumber]);
+        status.textContent = "Ticket #" + candidate.ticketId + " redeemed successfully! Transaction: " + tx.hash;
+        el("redemptionVerificationResult").textContent = "Redeemed — admission code is no longer valid.";
+        el("redemptionAdmissionCode").value = "";
+        pendingRedemption = null;
+        clearEventTicketCache();
+        await loadEventTickets();
+    } catch (error) {
+        status.textContent = transactionRejected(error) ? "MetaMask transaction rejected." : "Redemption failed: " + errorMessage(error);
+        pendingRedemption = null;
+    } finally {
+        busy = false;
+        button.disabled = true;
+    }
+});
+
+// Keep admission-code UI aligned with wallet and issuer dashboard changes.
+const originalUpdateIssuerDashboard = updateIssuerDashboard;
+updateIssuerDashboard = async function () {
+    await originalUpdateIssuerDashboard();
+    if (!el("issuerDashboard").hidden) await loadRedemptionEvents();
+};
+const originalClearWallet = clearWallet;
+clearWallet = function (message) {
+    holderSession = null;
+    resetAdmissionVerification();
+    originalClearWallet(message);
+};
+
+</script>
 </body>
 </html>

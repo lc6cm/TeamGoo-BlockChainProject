@@ -1,7 +1,20 @@
-node_modules/ 
-.env 
-artifacts/ 
-cache/ 
-.vs/ 
+node_modules/
+.env
+.env.*
+!.env.example
+artifacts/
+cache/
+.vs/
 public/index.backup.html
 offchain/
+data/
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
+# Local backup files
+frontend/public/index.before-database-events.html
+frontend/server.backup.js
+frontend/server.before-events.js
