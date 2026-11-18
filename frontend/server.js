@@ -7,6 +7,29 @@ const DatabaseSync = require("better-sqlite3");
 const { ethers } = require("ethers");
 
 const app = express();
+// Support DIDLab's API proxy without affecting frontend files.
+app.use((req, res, next) => {
+  const apiPaths = [
+    "/admin",
+    "/issuer",
+    "/organizations",
+    "/events",
+    "/ticket-ids",
+    "/holder",
+    "/admission",
+    "/redemption"
+  ];
+
+  const isApiPath = apiPaths.some(
+    (prefix) => req.path === prefix || req.path.startsWith(prefix + "/")
+  );
+
+  if (isApiPath) {
+    req.url = "/api" + req.url;
+  }
+
+  next();
+});
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, "public");
 const DATA_DIR = process.env.DATA_DIR ||
