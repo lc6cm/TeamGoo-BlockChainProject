@@ -1,4 +1,4 @@
-
+﻿
 
 <!DOCTYPE html>
 <html lang="en">
@@ -988,7 +988,7 @@ function usdToTrustWei(usd) {
 
 function trustWeiToUsd(wei) {
     const cents = BigInt(wei) / (10n ** 13n);
-    return "$" + ethers.formatUnits(cents, 2);
+    return "$" + Number(ethers.formatUnits(cents, 2)).toFixed(2);
 }
 
 
