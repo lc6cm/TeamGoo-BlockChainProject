@@ -3,7 +3,7 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
-const { DatabaseSync } = require("node:sqlite");
+const DatabaseSync = require("better-sqlite3");
 const { ethers } = require("ethers");
 
 const app = express();
