@@ -301,3 +301,148 @@ The remaining frontend work includes displaying multiple tickets, adding event i
 AI-generated code and explanations were not treated as proof of correctness. Contract behavior was checked through automated tests, live DIDLab transactions, and direct state verification.
 
 The final implementation, evidence selection, and submission decisions remained the responsibility of the team.
+
+## Checkpoint 4 - Final Project AI Development Record
+
+### What We Asked For
+
+During Checkpoint 4, ChatGPT assisted with completing and refining the TeamGoo Ticket Marketplace.
+
+We requested help with:
+
+- Expanding the marketplace to display multiple tickets and events.
+- Adding event information, including names, dates, venues, descriptions, and ticket prices.
+- Improving the buyer experience for purchasing tickets through MetaMask.
+- Implementing and troubleshooting ticket resale functionality.
+- Adding a My Tickets section for viewing tickets owned by the connected wallet.
+- Improving the Admin Dashboard and Issuer Dashboard.
+- Implementing ticket admission-code functionality.
+- Adding issuer controls for ticket verification and redemption.
+- Connecting frontend actions to the deployed DIDLab smart contract.
+- Understanding how blockchain records ticket ownership, transfers, and redemption.
+- Converting ticket prices from TRUST to USD for display.
+- Maintaining TRUST as the currency used for blockchain transactions.
+- Formatting USD prices to consistently display two decimal places.
+- Troubleshooting JavaScript and HTML issues.
+- Checking that the frontend files matched before committing.
+- Using Git commands to stage, commit, and push frontend changes.
+- Updating the final Checkpoint Report and AI Record.
+
+### What It Produced
+
+ChatGPT provided:
+
+- HTML and JavaScript suggestions for improving the marketplace interface.
+- Code suggestions for displaying multiple events and tickets.
+- Guidance for connecting ticket purchases and resale actions to MetaMask.
+- JavaScript suggestions for displaying tickets associated with a connected wallet.
+- Guidance for implementing admission-code authentication and issuer redemption controls.
+- Explanations of smart contract ownership and redemption state.
+- Suggestions for handling transaction confirmations and failures.
+- JavaScript functions for converting USD prices to TRUST amounts.
+- A fixed conversion rate of 0.01 TRUST = $10.00 USD.
+- Code for displaying USD prices with two decimal places using toFixed(2).
+- PowerShell commands for copying frontend changes between project directories.
+- Commands for checking JavaScript syntax and Git whitespace errors.
+- Git commands for committing and pushing changes to GitHub.
+- Explanations of how blockchain transactions can be inspected using the DIDLab explorer.
+- Documentation suggestions for the final project report.
+
+### How We Verified It
+
+We reviewed the AI-generated suggestions and compared them with the actual application implementation.
+
+#### Frontend and Marketplace
+
+- Reviewed the updated HTML and JavaScript source code.
+- Checked JavaScript syntax using Node.js.
+- Confirmed that the frontend files matched using file hashes.
+- Continued using the deployed TicketMarketplace contract on DIDLab.
+- Used ethers.js and MetaMask for blockchain interactions.
+- Reviewed the ticket purchasing, resale, ownership, and redemption workflows.
+- Checked the implementation of event information and ticket display.
+- Reviewed the admission-code and issuer redemption functionality.
+
+#### USD Pricing
+
+- Implemented a fixed USD-to-TRUST conversion rate.
+- Confirmed that the application displayed ticket prices in USD.
+- Identified that prices such as $10.00 were initially displayed as $10.0.
+- Updated the formatting function to consistently display two decimal places.
+- Preserved TRUST as the currency used for blockchain transactions.
+- Confirmed that the conversion changes did not require smart contract redeployment.
+
+The fixed conversion rate used was:
+
+- $10.00 USD = 0.01 TRUST.
+- $12.50 USD = 0.0125 TRUST.
+- $25.00 USD = 0.025 TRUST.
+
+#### Repository and GitHub
+
+- Updated frontend/public/index.html and public/index.html.
+- Copied the updated frontend file to the deployment directory.
+- Compared file hashes to verify that both HTML files matched.
+- Ran git diff --check to identify trailing whitespace.
+- Removed the whitespace using PowerShell.
+- Confirmed that the whitespace check passed.
+- Staged only the intended frontend HTML files.
+- Successfully committed the USD conversion changes.
+
+Commit:
+
+eb44b51 - Display ticket prices in USD using fixed TRUST conversion
+
+- Successfully pushed the changes to the GitHub main branch.
+- Prepared the final price-formatting changes for deployment.
+- Kept unrelated backup and event files outside the commit.
+
+### What It Got Wrong
+
+Some AI-generated suggestions required corrections during implementation.
+
+- The initial USD formatting function used ethers.formatUnits(), which removed unnecessary trailing zeros and displayed prices such as $10.0 instead of $10.00.
+- We corrected this by applying Number(...).toFixed(2) to the formatted USD value.
+- The initial PowerShell command for removing trailing whitespace did not resolve all reported whitespace errors.
+- A revised PowerShell command successfully removed the whitespace.
+- Some frontend changes required additional review to ensure the correct HTML files were updated.
+- AI-generated code and documentation were reviewed rather than accepted without verification.
+- The AI initially provided checkpoint documentation files that caused character warnings when opened in Notepad.
+- We used plain Markdown text that could be copied directly into the existing project documentation.
+
+These corrections demonstrate that AI suggestions were tested and adjusted based on actual results.
+
+### Project Limitations
+
+The application was completed for the intended scope of the course project.
+
+The following limitations were identified:
+
+- The USD-to-TRUST conversion uses a fixed rate rather than live market pricing.
+- Real-world ticket authenticity depends on authorized issuers.
+- Admission-code security would require additional hardening for commercial use.
+- Wallet security depends on users protecting their private keys.
+- Additional security auditing and scalability testing would be necessary for production use.
+- The separate encrypted ticket-record registry is not fully integrated into the marketplace interface.
+
+These limitations were documented rather than treated as required additional development for the course project.
+
+### How AI Was Used
+
+AI was used as a development assistant throughout Checkpoint 4.
+
+ChatGPT helped explain blockchain concepts, suggest frontend code, troubleshoot implementation problems, improve price formatting, prepare Git commands, and document the completed application.
+
+The team remained responsible for reviewing the generated code, implementing changes, executing commands, verifying results, and making final project decisions.
+
+AI-generated explanations and code were not considered proof of correctness. The team relied on source-code review, automated testing, wallet interactions, and blockchain transaction evidence where available.
+
+### Final Project Status
+
+Status: COMPLETED
+
+The TeamGoo Ticket Marketplace was completed as a functional blockchain-based ticket marketplace for the course project.
+
+The application demonstrates ticket issuance, purchasing, resale, ownership verification, wallet integration, and ticket redemption using the DIDLab blockchain.
+
+AI assistance supported the development and documentation process, but the final implementation and submission decisions remained the responsibility of the team.

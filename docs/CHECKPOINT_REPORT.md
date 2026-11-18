@@ -493,6 +493,103 @@ The following features are planned:
 
 The latest frontend and contract changes were committed and pushed to the GitHub `main` branch.
 
+## 19. Checkpoint 4 - Final Project Completion
+
+The TeamGoo Ticket Marketplace was completed as a functional blockchain-based ticketing application for the course project. The final implementation supports ticket issuance, purchasing, resale, ownership verification, and ticket redemption through the DIDLab blockchain.
+
+### Final Marketplace Features
+
+- Implemented a marketplace interface that displays multiple tickets and events.
+- Added event information, including event names, dates, venues, descriptions, and ticket prices.
+- Allowed buyers to connect MetaMask and purchase available tickets.
+- Implemented ticket resale listings, resale purchases, and listing cancellation.
+- Added a My Tickets section for users to view tickets associated with their connected wallet.
+- Integrated live blockchain data to display ticket ownership and availability.
+- Added transaction status messages for successful, pending, rejected, and failed transactions.
+
+### Admin and Issuer Functionality
+
+- Completed the Admin Dashboard for managing authorized ticket issuers.
+- Allowed administrators to authorize and revoke issuer permissions.
+- Completed the Issuer Dashboard for creating events and issuing tickets.
+- Added ticket creation functionality through the deployed TicketMarketplace smart contract.
+- Implemented issuer controls for viewing events and managing ticket redemption.
+- Used wallet-based authorization to restrict administrative and issuer operations.
+
+### Ticket Admission and Redemption
+
+- Implemented admission-code functionality for ticket holders.
+- Added functionality for ticket holders to access their admission information.
+- Added issuer controls for validating and redeeming tickets.
+- Integrated ticket redemption with the blockchain's redemption state.
+- Allowed redemption status to be checked to help prevent tickets from being used multiple times.
+
+### USD Pricing and TRUST Conversion
+
+Updated the marketplace to display ticket prices in US dollars while continuing to process blockchain transactions using DIDLab TRUST tokens.
+
+The application uses a fixed conversion rate:
+
+- 0.01 TRUST = $10.00 USD.
+- 1 TRUST = $1,000.00 USD.
+- $25.00 USD = 0.025 TRUST.
+
+Implemented JavaScript conversion functions to translate displayed USD prices into TRUST amounts for blockchain transactions.
+
+Updated the price formatting to consistently display two decimal places, such as $10.00 and $12.50.
+
+These changes improve usability without requiring modifications or redeployment of the existing smart contract.
+
+### Blockchain Integration
+
+- Continued using the deployed TicketMarketplace smart contract on DIDLab.
+- Used ethers.js to communicate with the blockchain.
+- Used MetaMask for wallet connection and transaction authorization.
+- Maintained on-chain ticket ownership, purchase, resale, and redemption information.
+- Allowed blockchain transactions to be independently inspected using the DIDLab explorer.
+- Preserved smart contract access controls for administrative and issuer operations.
+
+### Repository and Deployment
+
+- Updated the frontend HTML and JavaScript files.
+- Maintained the frontend implementation in both frontend/public/index.html and public/index.html.
+- Committed and pushed the final USD pricing improvements to the GitHub main branch.
+- Used DIDLab hosting for the deployed marketplace.
+
+Live application: https://teamgoo.didlab.org
+
+Repository: https://github.com/lc6cm/TeamGoo-BlockChainProject
+
+Marketplace contract: 0x98dEca57f98504fF09AcdBF1F2345ABF72EbA3c6
+
+### Project Limitations
+
+The application is considered complete for the scope of the course project. However, several limitations would need to be addressed before production deployment.
+
+- The marketplace uses a fixed USD-to-TRUST conversion rate rather than a live exchange rate.
+- Real-world ticket authenticity still depends on authorized event issuers.
+- Admission-code security and identity verification would require additional hardening for commercial use.
+- Administrator and issuer wallet security depends on users protecting their private keys.
+- Blockchain transactions require users to have MetaMask and sufficient TRUST for payments and network fees.
+- Additional security auditing, scalability testing, and broader user testing would be necessary for a production application.
+- The encrypted ticket-record registry is a separate blockchain component and is not fully integrated into the main marketplace interface.
+
+These limitations do not prevent the application from demonstrating its intended blockchain functionality.
+
+### Final Project Status
+
+Status: COMPLETED
+
+The TeamGoo Ticket Marketplace meets the intended scope of the course project by demonstrating a functional blockchain-based ticket marketplace.
+
+The application allows authorized issuers to create tickets, buyers to purchase tickets, owners to resell tickets, and authorized operators to redeem tickets.
+
+Blockchain technology provides a shared and verifiable record of ticket ownership, transfers, and redemption status. This reduces reliance on a centralized ticketing platform for ownership verification and helps address problems involving counterfeit tickets, unauthorized resale, and duplicate redemption.
+
+The completed project demonstrates smart contract development, wallet integration, blockchain transactions, role-based access control, frontend development, security testing, and deployment.
+
+No additional features are required for the defined course project scope.
+
 Contribution Summary
 
 Joey: Smart contract development, DIDLab deployment, encryption and IPFS testing, wallet permission testing, automated security tests, blockchain verification, and evidence collection.
