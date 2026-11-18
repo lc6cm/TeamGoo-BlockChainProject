@@ -9,9 +9,10 @@
     "test": "test"
   },
   "scripts": {
-    "start": "npm --prefix frontend ci && npm --prefix frontend start",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
+  "start": "npm --prefix frontend start",
+  "postinstall": "npm --prefix frontend ci",
+  "test": "echo \"Error: no test specified\" && exit 1"
+},
   "repository": {
     "type": "git",
     "url": "git+https://github.com/lc6cm/TeamGoo-BlockChainProject.git"
